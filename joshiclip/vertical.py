@@ -290,8 +290,8 @@ def _render_ffmpeg(rep, T, cfg, q, g, W, H, fps, n, segs, norm, tmp, out, voc_wa
     vg = cut.multi_trim_graph(segs, vout="vt")
     vg += (f";[vt]sendcmd=f=cam.cmd,crop@cam=w={cw[0]}:h={ch[0]}:x={x[0]}:y={y[0]},"
            f"scale={VW}:{VH}:flags=lanczos,setsar=1,unsharp=5:5:{params.sharpen:.4f}:3:3:0,"
-           f"format=gbrp,lut3d=file=grade.cube:interp=trilinear,format=yuv420p,"
-           f"pad={PW}:{VH}:0:0:color=black,split=3[g0][g1][g2];"     # ffmpeg blend SIMD needs width % 16 == 0
+           f"pad={PW}:{VH}:0:0:color=black,"          # swscale yuv->gbrp + blend SIMD leave the last 8 px of a 1080 row unset
+           f"format=gbrp,lut3d=file=grade.cube:interp=trilinear,format=yuv420p,split=3[g0][g1][g2];"
            f"[g1]scale={max(2, PW // 16)}:{max(2, VH // 16)}:flags=area,gblur=sigma={sig:.3f},"
            f"scale={PW}:{VH}:flags=bilinear[bl];"
            f"[g0][bl]blend=c0_mode=grainextract:c1_mode=normal:c2_mode=normal,"
