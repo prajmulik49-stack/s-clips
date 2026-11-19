@@ -107,3 +107,22 @@ def test_intro_phrase_rejected(cfg):
     hit = [c for c in cands if c["si"] == 10]
     assert hit and all(c["reject_all"] and any(r.startswith("intro_outro_phrase") for r in c["reject_all"]) for c in hit)
     assert w0["s"] == s["s"]
+
+
+def test_boundaries_clean_cuts_and_deterministic(cfg):
+    from joshiclip import boundaries
+    A = _synthetic()
+    n = A["n_sec"]
+    rms10 = np.full(n * 100, -30.0, np.float32)
+    for w in A["words"]:                              # speech is louder than the gaps
+        rms10[int(w["s"] * 100):int(w["e"] * 100)] = -12.0
+    A["rms10"] = rms10
+    A["duration"] = float(n - 1)
+    b1 = boundaries.best_span(A, 150.0, cfg)
+    b2 = boundaries.best_span(A, 150.0, cfg)
+    assert b1 == b2 and b1 is not None
+    c = cfg["boundaries"]
+    assert c["min_s"] <= b1["dur"] <= c["max_s"]
+    assert b1["start"] < 150.0 < b1["end"]
+    for w in A["words"]:                              # no cut inside a word
+        assert not (w["s"] < b1["start"] < w["e"]) and not (w["s"] < b1["end"] < w["e"])

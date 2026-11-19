@@ -39,6 +39,10 @@ hook:
   emotional: [ro, rona, sad, miss, yaad, dukh, emotional, pyaar, maaf, sorry]
   food: [khana, khao, swad, tasty, maza aa gaya, pizza, chai, mithai]
 
+excite: [kya baat hai, yaar kya baat hai, kitna badiya, kitna sundar, kitna mast, kya view hai, badiya view, kya jagah hai,
+         wow, oh my god, omg, kamaal, gazab, zabardast, maza aa gaya, maze aa gaye, mast hai, ekdum mast, superb, amazing,
+         unbelievable, kya scene hai, chalo chalo, jaldi jaldi, bhago, aaja aaja]
+
 reactions: [arey, arre, hahaha, kya baat, mast, pagal, bhai, yaar, oye, chal, are yaar, kamaal, gazab, ohho]
 
 stopwords: [hai, hain, tha, thi, the, ka, ki, ke, ko, se, mein, main, to, toh, bhi, hi, na, nahi, ye, vo, woh, aur,

@@ -90,6 +90,32 @@ def video_lag_vertical_ms(out_path, src_path, t_out: float, t_src: float, L: flo
     return lag * 1000.0 / fps, c
 
 
+def frame_match_ms(out_path, src_path, t_out: float, src_frame: int, fps: float, vgeom: dict, k_out: int,
+                   search: int = 4) -> tuple[float, float]:
+    """Exact-frame check: rebuild the expected crop from source frames src_frame-4..+4 and find which one the
+    output frame shows. Ties (duplicated 30-in-60 frames) resolve to the offset closest to 0. Returns (ms, confidence)."""
+    W, vy, vh = vgeom["W"], vgeom["video_y"], vgeom["video_h"]
+    sw, sh = vgeom["src_w"], vgeom["src_h"]
+    z = vgeom["zoom"][k_out]
+    cw = int(round(sh * W / vh / z / 2) * 2); ch = int(round(sh / z / 2) * 2)
+    x = int(np.clip(round(vgeom["cx"][k_out] * sw - cw / 2), 0, sw - cw)); y = (sh - ch) // 2
+
+    def grab(path, t, vf):
+        r = media.run([media.ff(), "-v", "error", "-ss", f"{max(0.0, t):.4f}", "-i", str(path), "-frames:v", "1", "-vf",
+                       vf + ",format=gray", "-f", "rawvideo", "-"])
+        a = np.frombuffer(r.stdout, np.uint8).astype(np.float32)
+        return a - a.mean()
+    o = grab(out_path, t_out - 0.5 / fps, f"crop={W}:{vh}:0:{vy},scale=108:158")
+    errs = []
+    for d in range(-search, search + 1):
+        sf = grab(src_path, (src_frame + d - 0.5) / fps, f"crop={cw}:{ch}:{x}:{y},scale=108:158")
+        errs.append((round(float(np.abs(o - sf).mean()), 2), abs(d), d))
+    errs.sort()
+    best = errs[0]
+    conf = (sorted(e for e, _, _ in errs)[-1] - best[0]) / (best[0] + 1e-6)
+    return best[2] * 1000.0 / fps, round(conf, 3)
+
+
 def check_render(out_path, src_path, span: tuple[float, float], fps: float, probe_len: float = 1.5,
                  max_offset_ms: float = 40.0, vgeom: dict | None = None) -> dict:
     """Duration / fps / A/V offset checks for one continuous-span render."""
@@ -124,6 +150,12 @@ def check_render(out_path, src_path, span: tuple[float, float], fps: float, prob
             if sm is not None:
                 vg["frame0"] = sm[4] - sm[3]
             vl, vc = video_lag_vertical_ms(out_path, src_path, t, ts, L, fps, vg)
+            if (vc < 0.5 or abs(vl - al) > 40) and "src_w" in vg:   # weak correlation or a big offset -> exact frame matching decides
+                tm = t + L / 2
+                k_out = int(round(tm * fps))
+                src_frame = int(round(ts * fps + L / 2 * fps))
+                vl, conf = frame_match_ms(out_path, src_path, tm, src_frame, fps, vg, min(k_out, len(vg["zoom"]) - 1))
+                vc = 0.9 if conf > 0.15 else vc
         else:
             vl, vc = video_lag_ms(out_path, src_path, t, ts, L, fps)
         res["probes"].append({"where": where, "t_out": round(t, 3), "audio_lag_ms": round(al, 1), "audio_corr": round(ac, 3),

@@ -214,7 +214,7 @@ def analyze(cfg: Config, target: str | None, latest: bool = False, vid: str | No
             "words": words, "sentences": sents, "per_sec": ps, "peaks": pk["peaks"], "topics": tp,
             "scene_cuts": sc["cuts"], "vision": vis, "transcript_model": tr["model"], "align_stats": al["stats"],
             "diar_stats": di["stats"], "cache": C, "lexicon": lx, "version": __version__, "vad_prob": vad_prob,
-            "comments_per_sec": comments}
+            "comments_per_sec": comments, "rms10": af["rms"]}
 
 
 def plan(cfg: Config, A: dict, max_shorts: int | None = None):

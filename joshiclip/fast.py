@@ -175,6 +175,7 @@ def run_fast(cfg: Config, target, latest=False, vid=None, mode="final", max_shor
     url = A["meta"]["source"]
     out_dir = cfg.path("out") / f"{vid}-fast"
     out_dir.mkdir(parents=True, exist_ok=True)
+    _acquire_lock(out_dir)
     wins = [cands[i] for i in sel["winners"]]
     log(f"  plan: {len(wins)} Shorts after {t_an:.0f}s -> downloading 4K spans")
     pad = cfg["fast"]["clip_pad_s"]
@@ -266,6 +267,35 @@ def run_fast(cfg: Config, target, latest=False, vid=None, mode="final", max_shor
     report.write(rep, out_dir, C.timings)
     log(f"  done in {C.timings['TOTAL'] / 60:.1f} min -> {out_dir}")
     return 0 if all(r["checks"]["ok"] for r in renders.values()) else 1
+
+
+# ---------------------------------------------------------------- one run per output folder
+def _pid_alive(pid: int) -> bool:
+    import os
+    if os.name == "nt":
+        r = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/NH"], capture_output=True, text=True)
+        return str(pid) in r.stdout
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
+def _acquire_lock(out_dir: Path) -> None:
+    """Two runs writing the same Shorts corrupt the files: refuse if another live run holds the folder."""
+    import atexit
+    import os
+    lock = out_dir / ".lock"
+    if lock.exists():
+        try:
+            pid = int(lock.read_text().strip())
+        except ValueError:
+            pid = -1
+        if pid > 0 and pid != os.getpid() and _pid_alive(pid):
+            raise RuntimeError(f"another joshiclip run (PID {pid}) is writing {out_dir}; wait for it to finish")
+    lock.write_text(str(os.getpid()))
+    atexit.register(lambda: lock.unlink(missing_ok=True))
 
 
 # ---------------------------------------------------------------- worker process (one Short)

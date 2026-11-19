@@ -66,7 +66,7 @@ def _category(text, peak_type):
 
 def _near_names(text):
     names = lex.lexicon().get("names") or []
-    return [str(n) for n in names if lex.phrase_in(str(n), text, 75)]
+    return [str(n) for n in names if lex.phrase_in(str(n), text, 100)]
 
 
 def _what(text, category):
@@ -120,8 +120,10 @@ def incident_cards(A, cfg):
             category = _category(nearby, peak.get("type"))
             who = _near_names(nearby)
             what = _what(nearby, category)
-            if not who or not what:
+            shout = peak.get("type") in ("scream", "laugh", "cheer", "gasp") and peak.get("strength", 0) >= cfg["engine"].get("must_peak_strength", 3.0)
+            if (not who or not what) and not shout:
                 continue
+            what = what or peak.get("type")
             center = _sentence_index(sents, t)
             start_i = center
             while start_i > event["si"] and sents[start_i]["s"] - sents[start_i - 1]["s"] < 2.0 and sents[start_i]["s"] - sents[center]["s"] > -12:
@@ -152,6 +154,34 @@ def incident_cards(A, cfg):
                           "category": category, "format": fmt, "incident_strength": round(signal, 4),
                           "consensus_likeness": round(_consensus_prior(cfg, category), 4),
                           "viewer_score": round(_comment_score(A, a, b), 4)})
+    # Strong shout / scream / laugh peaks with no speech around them (slide rides, screams) fall BETWEEN the
+    # sentence-based events above - give each its own card; refine() finds the clean start/end from nearby speech.
+    used = {round(c["peak_t"], 3) for c in cards}
+    must = cfg["engine"].get("must_peak_strength", 3.0)
+    from . import boundaries
+    extra = boundaries.excited_moments(A, cfg["engine"].get("excited_min_z", 3.0))   # loud "yaar kya baat hai!" moments
+    for peak in list(A.get("peaks", [])) + extra:
+        t = float(peak["t"])
+        if round(t, 3) in used or peak.get("type") not in ("scream", "laugh", "cheer", "gasp", "excited") or peak.get("strength", 0) < must:
+            continue
+        if any(abs(t - u) < 10 for u in used):
+            continue
+        if peak.get("type") != "excited" and any(e["start"] <= t <= e["end"] for e in events):
+            continue
+        used.add(round(t, 3))
+        si = max(0, _sentence_index(sents, t))
+        nearby = _text(A, t - 15, t + 15)
+        category = _category(nearby, peak.get("type"))
+        ia, ib = int(max(0, t - 5)), min(len(ps["rms"]), int(t + 5))
+        rms = np.asarray(ps["rms"][ia:ib])
+        signal = float(np.clip((peak.get("strength", 0) / 6) + max(0, float(rms.max() - rms.mean()) / 20), 0, 1))
+        cards.append({"id": len(cards), "si": si, "ei": si, "start": round(t - 20, 3), "end": round(t + 15, 3), "dur": 35.0,
+                      "peak": peak.get("id"), "peak_t": t, "peak_type": peak.get("type"),
+                      "cluster": f"gap_peak{peak.get('id')}", "event_id": f"gap{peak.get('id')}",
+                      "who": _near_names(nearby), "what": peak.get("type"), "emotion": {"peak_type": peak.get("type")},
+                      "object_or_number": None, "category": category, "format": "moment",
+                      "incident_strength": round(signal, 4), "consensus_likeness": round(_consensus_prior(cfg, category), 4),
+                      "viewer_score": round(_comment_score(A, t - 20, t + 15), 4)})
     # Keep the strongest card from the same event/peak family before scoring.
     unique = {}
     for card in cards:
@@ -167,8 +197,8 @@ def _number(text):
 
 
 def title(card):
-    who = card["who"][0]
-    what = card["what"]
+    who = card["who"][0] if card["who"] else ""
+    what = card["what"] or ""
     ending = "ho gaya" if card["category"] in ("funny_accident", "danger_loss_fear") else "gaya"
     emoji = EMOJI.get(card["category"], "😂")
     text = f"{who} {what} {ending} {emoji}"
@@ -184,7 +214,7 @@ def score_cards(cards):
         card["hook_score"] = card["incident_strength"]
         card["story_score"] = round(0.6 * card["incident_strength"] + 0.4 * card["consensus_likeness"], 6)
         card["hook_types"] = [card["category"], card["peak_type"]]
-        card["reasons"] = [f"{card['category']} incident", f"who={card['who'][0]}", f"what={card['what']}"]
+        card["reasons"] = [f"{card['category']} incident", f"who={card['who'][0] if card['who'] else '-'}", f"what={card['what']}"]
         card["reject"] = None if card["titleable"] else "not_titleable"
         card["reject_all"] = [] if card["titleable"] else ["not_titleable"]
     return cards
@@ -215,6 +245,35 @@ def _overlap(a, b):
     return max(0.0, min(a["end"], b["end"]) - max(a["start"], b["start"])) / min(a["dur"], b["dur"])
 
 
+def refine(cards, A, cfg):
+    """Deterministic best start/end (silence-cut, ms precise) + a real-line title for every card."""
+    from . import boundaries
+    out = []
+    for card in cards:
+        b = boundaries.best_span(A, float(card["peak_t"]), cfg)
+        if b is None:
+            card["reject"] = "no_clean_span"; card["reject_all"] = ["no_clean_span"]
+            out.append(card); continue
+        card.update(start=b["start"], end=b["end"], dur=b["dur"], si=b["si"], ei=b["ei"], format="moment",
+                    boundary=b)
+        card["title"], card["title_source"] = boundaries.make_title(A, card)
+        card["reject"], card["reject_all"] = None, []               # a real line / template always exists now
+        shout = boundaries.shout_strength(A, card)
+        card["shout"] = shout
+        card["final"] = round(card["final"] + 0.25 * b["score"] + cfg["boundaries"].get("shout_weight", 0.6) * shout, 6)
+        out.append(card)
+    return out
+
+
 def plan(A, cfg, max_shorts=None):
     cards = score_cards(incident_cards(A, cfg))
-    return cards, select(cards, A, cfg, max_shorts)
+    if cfg.get("boundaries", {}).get("enabled", False):
+        cards = refine(cards, A, cfg)
+    sel = select(cards, A, cfg, max_shorts)
+    if cfg.get("boundaries", {}).get("enabled", False):     # unique titles, best Short gets first pick
+        from . import boundaries
+        used = set()
+        for cid in sorted(sel["winners"], key=lambda i: (-cards[i]["final"], cards[i]["start"])):
+            cards[cid]["title"], cards[cid]["title_source"] = boundaries.make_title(A, cards[cid], used)
+            used.add(cards[cid]["title"])
+    return cards, sel

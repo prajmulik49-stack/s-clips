@@ -32,12 +32,24 @@ def silent_gaps(A: dict, t0: float, t1: float, c: dict) -> list[tuple[float, flo
             i += 1
     out = []
     words = A["words"]
+    from .analysis.topics import robust_z
+    if "_jc_z" not in A:   # shouts / laughs are not "speech" for the VAD but must never be cut
+        A["_jc_z"] = np.maximum(np.maximum(robust_z(ps["scream"]), robust_z(ps["laugh"])), robust_z(ps["cheer"]))
+    rms10 = A.get("rms10")
+    quiet_thr = None
+    if rms10 is not None:
+        seg = rms10[int(t0 * 100):int(t1 * 100)]
+        quiet_thr = float(np.percentile(seg, c.get("quiet_percentile", 45))) if len(seg) else None
     for a, b in gaps:
         if any(a < w["e"] and w["s"] < b for w in words):
             continue
         s0, s1 = int(a), int(np.ceil(b))
-        if max(ps["laugh"][s0:s1].max(initial=0), ps["scream"][s0:s1].max(initial=0), ps["cheer"][s0:s1].max(initial=0)) >= 0.3:
+        if A["_jc_z"][s0:s1].max(initial=0) >= 2.0:
             continue
+        if quiet_thr is not None:
+            r = rms10[int(a * 100):int(b * 100)]
+            if len(r) and (r <= quiet_thr + 3.0).mean() < 0.8:      # not actually quiet (shouting, music, crash)
+                continue
         out.append((a, b))
     return out
 

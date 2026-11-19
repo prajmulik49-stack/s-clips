@@ -331,5 +331,5 @@ def _render_ffmpeg(rep, T, cfg, q, g, W, H, fps, n, segs, norm, tmp, out, voc_wa
     rep["timings"] = T
     eff_cx = (x + cw / 2) / src_w
     rep["_vgeom"] = {"W": W, "H": H, "video_y": g.video_y, "video_h": g.video_h, "cx": eff_cx.tolist(),
-                     "zoom": z.tolist(), "frame0": span.fa, "segmap": seg_map(segs)}
+                     "zoom": z.tolist(), "frame0": span.fa, "segmap": seg_map(segs), "src_w": src_w, "src_h": src_h}
     return rep

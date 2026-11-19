@@ -45,11 +45,26 @@ research:
     travel_scenery: [trip, travel, vacation, pahad, mountain, beach, flight, hotel, road]
     montage: [moments, memories, best, highlights, vlog, family]
 
+boundaries:                              # deterministic best start/end per moment (joshiclip/boundaries.py)
+  enabled: true
+  min_s: 30                              # user: Shorts were too short (8-20 s)
+  max_s: 58
+  pref_s: [38, 50]
+  min_lead_s: 4                          # the clip starts at least 4 s before the peak ...
+  max_lead_s: 40                         # ... and at most 40 s before it
+  min_tail_s: 2                          # ends 2-25 s after the peak (room for the reaction)
+  max_tail_s: 25
+  max_pre_roll_s: 0.6                    # cut point = quietest 10 ms inside the silence before the first word (<= 0.6 s)
+  max_post_roll_s: 0.6                   # ... and after the last word
+  shout_weight: 0.6                      # user: loud shouting / screaming moments must be shown -> big priority boost
+
 engine:
   mode: moment_first                    # moment_first | legacy
   min_shorts: 5
-  max_shorts: 12
-  min_score: 0.42
+  max_shorts: 8                          # best 8 by score (render time ~4 min per Short on this CPU)
+  min_score: 0.60                       # drops weak no-shout moments with only a template title
+  excited_min_z: 3.0                     # loud excited speech (robust z) that becomes its own moment card
+  must_peak_strength: 3.0                # scream/laugh/cheer peaks this strong are never dropped for a missing who/what
   incident_window_s: 14
   story_min_s: 38
   story_max_s: 50
@@ -214,10 +229,11 @@ selection:
 
 jumpcuts:                                # micro jump cuts ONLY inside fully silent stretches (never inside speech)
   enabled: true
-  min_silence_s: 1.0                     # a gap with no speech (VAD) and no laugh/scream at least this long ...
-  keep_pad_s: 0.25                       # ... keeps this much silence on each side; the middle is cut
+  min_silence_s: 0.6                     # user: cut wherever nobody is talking (gap with no speech, no shout/laugh) ...
+  keep_pad_s: 0.15                       # ... keeps this much silence on each side; the middle is cut
+  quiet_percentile: 45                   # a gap must also be quiet: 80 % of 10 ms frames below this loudness percentile (+3 dB)
   edge_guard_s: 1.0                      # never cut in the first/last second of a Short
-  max_cut_frac: 0.3                      # cut at most 30 % of a Short
+  max_cut_frac: 0.35                      # cut at most 30 % of a Short
   fade_ms: 6                             # tiny audio fades at each join (no clicks)
 
 layout:                                  # measured from reference/style_ref_02_user.png
@@ -258,13 +274,13 @@ look:                                    # starting point; tune() matches the re
   clahe_mix: 0.6
   vibrance: 1.25
   sharpen: 0.35
-  glow: 0.09
+  glow: 0.06
   glow_thr: 0.75
   clarity: 0.5
 
 look_tune:
-  tonal_strength: 0.5                    # tonal stats move 50% toward the reference
-  color_strength: 0.8                    # colour + local contrast move 80% (user: HDR a little softer)
+  tonal_strength: 0.35                   # user: less HDR - tonal stats move 35% toward the reference
+  color_strength: 0.55                   # colour + local contrast move 55% (user: less HDR)
 
 voice:
   denoise: true
