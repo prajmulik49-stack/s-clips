@@ -356,3 +356,41 @@ def _worker(job_path: str) -> int:
 if __name__ == "__main__":
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     raise SystemExit(_worker(sys.argv[1]))
+
+
+# ---------------------------------------------------------------- audio-only update (no picture re-render)
+def reaudio(cfg: Config, vid: str, log=print) -> int:
+    """Re-process every rendered Short's saved source audio with the CURRENT voice settings and remux it into the
+    finished video (video stream copied). Same sample count -> lip-sync unchanged. Takes seconds, not a re-render."""
+    import os
+    import soundfile as sf
+    from . import voice
+    out_dir = cfg.path("out") / f"{vid}-fast"
+    _acquire_lock(out_dir)
+    vc = dict(cfg["voice"], separator=cfg["fast"]["separator"])
+    n_done = 0
+    for d in sorted(out_dir.glob("short_*")):
+        res = d / "result.json"
+        if not (d / "src.wav").exists() or not res.exists():
+            continue
+        r = json.loads(res.read_text(encoding="utf-8"))
+        mp4s = sorted(out_dir.glob(f"{d.name[-2:]}_*.mp4"))
+        if not mp4s:
+            continue
+        mp4 = mp4s[0]
+        new = d / "voice_new.wav"
+        rep = voice.process(d / "src.wav", new, vc, log)
+        if sf.info(str(new)).frames != sf.info(str(d / "src.wav")).frames:
+            raise RuntimeError(f"{d.name}: audio length changed - refusing to remux")
+        tmp = mp4.with_suffix(".tmp.mp4")
+        media.run([media.ff(), "-v", "error", "-y", "-i", str(mp4), "-i", str(new), "-map", "0:v", "-map", "1:a",
+                   "-c:v", "copy", "-c:a", "aac", "-b:a", cfg["render"]["final"]["audio_bitrate"], "-ar", "48000",
+                   "-movflags", "+faststart", "-fflags", "+bitexact", "-flags:a", "+bitexact", "-shortest", str(tmp)])
+        os.replace(tmp, mp4)
+        os.replace(new, d / "voice.wav")
+        r["result"]["vertical"]["audio"] = rep
+        res.write_text(json.dumps(r, default=float), encoding="utf-8")
+        n_done += 1
+        log(f"  {mp4.name}: new audio ({rep['lufs']} LUFS, TP {rep['true_peak_dbtp']} dBTP), video untouched")
+    log(f"  re-audio done: {n_done} Shorts")
+    return 0

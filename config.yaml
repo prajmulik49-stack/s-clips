@@ -292,11 +292,11 @@ voice:
   mud_cut_db: -1.5
   presence_db: 1.5
   comp_ratio: 1.8
-  reverb_wet: 0.07                       # user: echo good, slightly less
+  reverb_wet: 0.035                      # user: only a little echo
   reverb_decay_s: 0.5
   reverb_predelay_s: 0.02
   reverb_highcut_hz: 6000
-  echo_taps: [[110, -24], [220, -32]]    # light slap echo (ms, dB)
+  echo_taps: [[110, -32]]                # one faint slap echo (ms, dB)
   duck_db: -18
   bg_gap_db: -6
   duck_attack_ms: 50

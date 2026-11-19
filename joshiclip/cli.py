@@ -42,6 +42,9 @@ def main(argv=None) -> int:
     p.add_argument("--plain", action="store_true", help="plain 16:9 cuts instead of the vertical layout")
     p.add_argument("--fast", action="store_true", help="360p analysis + YouTube captions + 4K only for winners (~10-15 min)")
 
+    p = sub.add_parser("reaudio", help="redo only the audio (voice settings) of rendered fast-mode Shorts"); _common(p)
+    p.add_argument("video_id")
+
     p = sub.add_parser("explain"); _common(p); p.add_argument("report")
 
     a = ap.parse_args(argv)
@@ -83,6 +86,9 @@ def main(argv=None) -> int:
         return run(cfg, a.target, a.latest, a.id, mode=mode, max_shorts=a.max_shorts,
                    export_candidates=a.export_candidates, preview_debug=a.preview_debug, render=not a.no_render,
                    plain=a.plain)
+    if a.cmd == "reaudio":
+        from .fast import reaudio
+        return reaudio(cfg, a.video_id)
     if a.cmd == "explain":
         from .report import explain
         return explain(a.report)
