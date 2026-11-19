@@ -97,16 +97,35 @@ def check_render(out_path, src_path, span: tuple[float, float], fps: float, prob
     info = media.probe(out_path)
     v, au = info["video"], info["audio"]
     nf = media.count_frames(out_path)
-    exp_frames = int(round((b - a) * fps))
+    segmap = (vgeom or {}).get("segmap")
+    total = sum(sm[2] for sm in segmap) if segmap else (b - a)
+    exp_frames = int(round(total * fps))
     res = {"out_fps": v["avg_fps"], "expected_fps": fps, "frames": nf, "expected_frames": exp_frames,
-           "video_dur": v["duration"], "audio_dur": au["duration"], "span_s": round(b - a, 6), "probes": []}
-    L = min(probe_len, (b - a) / 3)
-    for where, t in (("start", 0.0), ("mid", (b - a - L) / 2), ("end", b - a - L)):
-        al, ac = audio_lag_ms(out_path, src_path, t, a + t, L)
+           "video_dur": v["duration"], "audio_dur": au["duration"], "span_s": round(total, 6), "probes": []}
+    if segmap:   # probe inside the kept segments (each continuous), longest first; covers start/mid/end of the Short
+        L = probe_len
+        ok = [sm for sm in segmap if sm[2] >= L + 0.3] or [max(segmap, key=lambda sm: sm[2])]
+        L = min(L, min(sm[2] for sm in ok) - 0.1)
+        cands = []                                # start / middle / end of every usable segment (output time order)
+        for sm in ok:
+            for frac in (0.05, 0.5, 0.95):
+                o = frac * max(0.0, sm[2] - L)
+                cands.append((sm[0] + o, sm[1] + o, sm))
+        cands.sort(key=lambda x: x[0])
+        idx = sorted({0, len(cands) // 2, len(cands) - 1})
+        plan = [(f"out@{cands[i][0]:.1f}s", cands[i][0], cands[i][1], cands[i][2]) for i in idx]
+    else:
+        L = min(probe_len, (b - a) / 3)
+        plan = [(w, t, a + t, None) for w, t in (("start", 0.0), ("mid", (b - a - L) / 2), ("end", b - a - L))]
+    for where, t, ts, sm in plan:
+        al, ac = audio_lag_ms(out_path, src_path, t, ts, L)
         if vgeom:
-            vl, vc = video_lag_vertical_ms(out_path, src_path, t, a + t, L, fps, vgeom)
+            vg = dict(vgeom)
+            if sm is not None:
+                vg["frame0"] = sm[4] - sm[3]
+            vl, vc = video_lag_vertical_ms(out_path, src_path, t, ts, L, fps, vg)
         else:
-            vl, vc = video_lag_ms(out_path, src_path, t, a + t, L, fps)
+            vl, vc = video_lag_ms(out_path, src_path, t, ts, L, fps)
         res["probes"].append({"where": where, "t_out": round(t, 3), "audio_lag_ms": round(al, 1), "audio_corr": round(ac, 3),
                               "video_lag_ms": round(vl, 1), "video_corr": round(vc, 3), "av_offset_ms": round(vl - al, 1)})
     rel = [p for p in res["probes"] if p["audio_corr"] > 0.5 and p["video_corr"] > 0.3]
@@ -118,7 +137,7 @@ def check_render(out_path, src_path, span: tuple[float, float], fps: float, prob
         "probes_reliable": len(rel) >= 2 and n_audio_ok >= 2,
         "fps_match": abs(v["avg_fps"] - fps) < 1e-3,
         "frames_match": abs(nf - exp_frames) <= 1,
-        "audio_len_match": abs(au["duration"] - (b - a)) <= 1.0 / fps + 0.025,  # AAC frame granularity
+        "audio_len_match": abs(au["duration"] - total) <= 1.0 / fps + 0.025,  # AAC frame granularity
         "av_offset_ok": res["max_abs_av_offset_ms"] <= max_offset_ms,
         "audio_aligned": res["max_abs_audio_lag_ms"] <= max_offset_ms,
     }

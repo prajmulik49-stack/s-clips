@@ -87,3 +87,55 @@ def bench(cfg: Config, workdir: Path) -> None:
     out.write_text("\n".join(lines), encoding="utf-8")
     (workdir / "asr_bench.json").write_text(json.dumps({"rows": rows, "agreement": agree}, indent=1), encoding="utf-8")
     print(f"wrote {out}")
+
+
+def from_youtube_json3(path: Path) -> dict:
+    """YouTube auto-captions (json3) -> segments with word timings. Word end = next word start (capped)."""
+    d = json.loads(Path(path).read_text(encoding="utf-8"))
+    segs = []
+    for ev in d.get("events", []):
+        parts = [s for s in ev.get("segs", []) or [] if s.get("utf8", "").strip()]
+        if not parts:
+            continue
+        t0 = ev["tStartMs"] / 1000.0
+        dur = ev.get("dDurationMs", 0) / 1000.0
+        ws = [{"w": p["utf8"].strip(), "s": round(t0 + p.get("tOffsetMs", 0) / 1000.0, 3), "p": 0.9} for p in parts]
+        for i, w in enumerate(ws):
+            nxt = ws[i + 1]["s"] if i + 1 < len(ws) else t0 + dur
+            w["e"] = round(max(w["s"] + 0.08, min(nxt, w["s"] + 1.2)), 3)
+        segs.append({"s": ws[0]["s"], "e": ws[-1]["e"], "text": " ".join(w["w"] for w in ws),
+                     "avg_logprob": 0.0, "no_speech": 0.0, "words": ws})
+    # split multi-word tokens ("मैं हूं") into single words with interpolated times
+    for s in segs:
+        out = []
+        for w in s["words"]:
+            toks = w["w"].split()
+            if len(toks) <= 1:
+                out.append(w); continue
+            step = (w["e"] - w["s"]) / len(toks)
+            for k, t in enumerate(toks):
+                out.append({"w": t, "s": round(w["s"] + k * step, 3), "e": round(w["s"] + (k + 1) * step, 3), "p": w["p"]})
+        s["words"] = out
+    return {"model": "youtube-auto-captions", "model_ref": str(path), "settings": {}, "seconds": 0.0, "rtf": 0.0,
+            "segments": segs}
+
+
+def transcribe_batched(cfg: Config, wav: Path, model_name: str, batch_size: int = 8) -> dict:
+    """faster-whisper BatchedInferencePipeline (VAD-chunked, batched) - the fast-mode fallback."""
+    from faster_whisper import BatchedInferencePipeline
+    audio, sr = sf.read(str(wav), dtype="float32")
+    t = time.perf_counter()
+    model = load_model(cfg, model_name)
+    pipe = BatchedInferencePipeline(model=model)
+    a = cfg["asr"]
+    segs_it, _ = pipe.transcribe(audio, language=a["language"], beam_size=a["beam_size"], temperature=a["temperature"],
+                                 word_timestamps=True, batch_size=batch_size, condition_on_previous_text=False)
+    segs = []
+    for s in segs_it:
+        words = [{"w": w.word.strip(), "s": round(w.start, 3), "e": round(w.end, 3), "p": round(float(w.probability), 4)}
+                 for w in (s.words or []) if w.word.strip()]
+        segs.append({"s": round(s.start, 3), "e": round(s.end, 3), "text": s.text.strip(), "avg_logprob": round(float(s.avg_logprob), 4),
+                     "no_speech": round(float(s.no_speech_prob), 4), "words": words})
+    dt = time.perf_counter() - t
+    return {"model": f"{model_name} (batched)", "model_ref": _model_ref(cfg, model_name), "settings": {"batch_size": batch_size},
+            "seconds": round(dt, 1), "rtf": round(dt / (len(audio) / sr), 3), "segments": segs}

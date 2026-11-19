@@ -85,3 +85,26 @@ def cut_plain(norm, span: Span, out, preset: dict, height: int | None = None, th
     g += f";[vt]{','.join(chain)}[v0]"
     return [media.ff(), "-v", "error", "-y", *seek_args(span), "-i", str(norm), "-filter_complex", g,
             "-map", "[v0]", "-map", "[a0]", *encode_args(preset, span.fps, threads), str(out)]
+
+
+def multi_trim_graph(spans: list[Span], vout: str = "vt", aout: str | None = None, fade_ms: float = 0.0,
+                     want_video: bool = True) -> str:
+    """Several frame-exact segments joined in ONE filter graph (split -> trim -> concat). Audio segments are cut on the
+    same frame grid (integer samples per frame), so A/V stay locked at every join; optional tiny fades avoid clicks."""
+    n = len(spans)
+    parts = []
+    if want_video:
+        parts.append(f"[0:v]split={n}" + "".join(f"[vs{i}]" for i in range(n)) if n > 1 else "[0:v]null[vs0]")
+        for i, s in enumerate(spans):
+            parts.append(f"[vs{i}]trim=start={(s.fa - 0.5) / s.fps:.6f}:end={(s.fb - 0.5) / s.fps:.6f},setpts=PTS-STARTPTS[vc{i}]")
+        parts.append("".join(f"[vc{i}]" for i in range(n)) + f"concat=n={n}:v=1:a=0[{vout}]")
+    if aout:
+        parts.append(f"[0:a]asplit={n}" + "".join(f"[as{i}]" for i in range(n)) if n > 1 else "[0:a]anull[as0]")
+        for i, s in enumerate(spans):
+            f = ""
+            if fade_ms and n > 1:
+                d = fade_ms / 1000
+                f = f",afade=t=in:d={d:.4f},afade=t=out:st={max(0.0, s.dur - d):.6f}:d={d:.4f}"
+            parts.append(f"[as{i}]atrim=start={s.sa / s.sr:.9f}:end={s.sb / s.sr:.9f},asetpts=PTS-STARTPTS{f}[ac{i}]")
+        parts.append("".join(f"[ac{i}]" for i in range(n)) + f"concat=n={n}:v=0:a=1[{aout}]")
+    return ";".join(parts)

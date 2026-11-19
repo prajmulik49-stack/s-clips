@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import time
 from pathlib import Path
 
@@ -16,6 +17,11 @@ from .text import lex
 
 def workdir_for(cfg: Config, vid: str) -> Path:
     return cfg.path("work") / vid
+
+
+def clip_filename(rank: int, title: str) -> str:
+    safe = re.sub(r"[^A-Za-z0-9_-]+", "_", title).strip("_")[:64]
+    return f"{rank:02d}_{safe or 'moment'}.mp4"
 
 
 def _dedupe_loops(words: list[dict]) -> list[dict]:
@@ -42,7 +48,7 @@ def _dedupe_loops(words: list[dict]) -> list[dict]:
     return [w for w, k in zip(words, keep) if k]
 
 
-def analyze(cfg: Config, target: str | None, latest: bool = False, vid: str | None = None, log=print) -> dict:
+def analyze(cfg: Config, target: str | None, latest: bool = False, vid: str | None = None, log=print, fast: bool = False) -> dict:
     from . import ingest
     from .analysis import audio_feats as A
     from .analysis import speech, topics, transcript, vision_feats as V
@@ -50,12 +56,17 @@ def analyze(cfg: Config, target: str | None, latest: bool = False, vid: str | No
 
     lx = load_lexicon(cfg)
     lex.set_lexicon(lx)
-    v0, src = ingest.resolve_source(cfg, target, latest, log)
-    vid = vid or v0
-    wd = workdir_for(cfg, vid)
+    if fast:
+        from . import fast as fastmod
+        vid, wd, meta = fastmod.ingest_lite(cfg, target, latest, vid, log)
+    else:
+        v0, src = ingest.resolve_source(cfg, target, latest, log)
+        vid = vid or v0
+        wd = workdir_for(cfg, vid)
     log(f"[{vid}] analyze  (work dir {wd})")
     t_all = time.perf_counter()
-    meta = ingest.normalize(cfg, src, wd, log)
+    if not fast:
+        meta = ingest.normalize(cfg, src, wd, log)
     C = StageCache(wd)
     C.timings["normalize"] = sum(meta["timings_s"].values())
     nk = stable_hash(meta["key"])
@@ -75,13 +86,21 @@ def analyze(cfg: Config, target: str | None, latest: bool = False, vid: str | No
                          {"prob": A.silero_vad(audio(), str(mdir / "silero_vad.onnx"))}), log)
     vad_prob = vad_a["prob"]
 
-    tr, _ = C.run("transcript", 1, {"norm": nk, "asr": cfg["asr"]},
-                  lambda: (transcript.transcribe(cfg, wd / "audio_16k_mono.wav"), None), log)
+    def _transcribe():
+        if fast:
+            caps = sorted(wd.glob("*.hi-orig.json3")) + sorted(wd.glob("*.hi.json3"))
+            if caps:
+                log(f"    using YouTube auto-captions {caps[0].name}")
+                return transcript.from_youtube_json3(caps[0]), None
+            log("    no captions -> batched Whisper " + cfg["fast"]["asr_model"])
+            return transcript.transcribe_batched(cfg, wd / "audio_16k_mono.wav", cfg["fast"]["asr_model"]), None
+        return transcript.transcribe(cfg, wd / "audio_16k_mono.wav"), None
+    tr, _ = C.run("transcript", 2 if fast else 1, {"norm": nk, "asr": cfg["asr"], **({"fast": {k: cfg["fast"][k] for k in ("asr_model", "sub_langs")}} if fast else {})}, _transcribe, log)
 
     def _align():
         segs = tr["segments"]
         stats = {"engine": "none"}
-        if cfg["align"]["engine"] == "mms_fa":
+        if cfg["align"]["engine"] == "mms_fa" and not fast:
             try:
                 segs, stats = speech.mms_align(audio(), segs, cfg["align"]["max_shift_s"], log)
             except Exception as e:  # noqa: BLE001
@@ -102,7 +121,7 @@ def analyze(cfg: Config, target: str | None, latest: bool = False, vid: str | No
         for i, w in enumerate(words):
             w["i"] = i
         return {"stats": stats, "words": words}, None
-    al, _ = C.run("align", 2, {"tr": C.keys["transcript"], "align": cfg["align"], "vad": C.keys["vad"]}, _align, log)
+    al, _ = C.run("align", 2, {"tr": C.keys["transcript"], "align": cfg["align"], "vad": C.keys["vad"], **({"fast": True} if fast else {})}, _align, log)
     words = al["words"]
 
     def _audio_feats():
@@ -194,11 +213,17 @@ def analyze(cfg: Config, target: str | None, latest: bool = False, vid: str | No
     return {"vid": vid, "workdir": wd, "meta": meta, "fps": meta["fps"], "duration": dur, "n_sec": n_sec,
             "words": words, "sentences": sents, "per_sec": ps, "peaks": pk["peaks"], "topics": tp,
             "scene_cuts": sc["cuts"], "vision": vis, "transcript_model": tr["model"], "align_stats": al["stats"],
-            "diar_stats": di["stats"], "cache": C, "lexicon": lx, "version": __version__}
+            "diar_stats": di["stats"], "cache": C, "lexicon": lx, "version": __version__, "vad_prob": vad_prob,
+            "comments_per_sec": comments}
 
 
 def plan(cfg: Config, A: dict, max_shorts: int | None = None):
     from . import candidates, scoring, selection
+    # Real ingests opt into the moment-first planner. Synthetic/minimal analysis
+    # fixtures and old cached plans retain the legacy sentence-window contract.
+    if cfg.get("engine", {}).get("mode") == "moment_first" and A.get("workdir") is not None:
+        from . import moment_first
+        return moment_first.plan(A, cfg, max_shorts)
     cands = candidates.generate(A, cfg)
     candidates.hard_filters(A, cands, cfg)
     scoring.score_all(A, cands, cfg)
@@ -239,7 +264,8 @@ def run(cfg: Config, target, latest=False, vid=None, mode="draft", max_shorts=No
         for k, cid in enumerate(sel["winners"], 1):
             c = cands[cid]
             span = cut.snap(c["start"], c["end"], fps)
-            out = out_dir / (f"debug_short_{k:02d}.mp4" if preview_debug else f"short_{k:02d}.mp4")
+            c["file"] = f"debug_short_{k:02d}.mp4" if preview_debug else clip_filename(k, c["title"])
+            out = out_dir / c["file"]
             t = time.perf_counter()
             vrep = None
             if cfg["layout"]["vertical"] and not preview_debug and not plain:

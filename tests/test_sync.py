@@ -96,3 +96,34 @@ def test_nominal_fps():
     assert ingest.nominal_fps(mk(59.94), [30, 60]) == 60
     assert ingest.nominal_fps(mk(47.3), [30, 60]) == 60
     assert ingest.nominal_fps(mk(24.0), [30, 60]) == 30
+
+
+def test_jump_cut_segments_keep_sync(tmp_path, cfg):
+    """Two segments joined in one graph (a jump cut in the middle): every event stays A/V-locked and lands at the
+    mapped output time; total frames and samples are exact."""
+    src = tmp_path / "src.mkv"
+    _make_source(src, "60", 60, 0.0, 44100)
+    ingest.normalize(cfg, src, tmp_path / "w")
+    norm = tmp_path / "w" / "norm.mp4"
+    fl, bp = _flash_times(norm, 60), _beep_times(norm)
+    segs = [cut.snap(1.0, 3.0, 60), cut.snap(4.2, 7.3, 60)]          # cut 3.0-4.2 s out
+    g = cut.multi_trim_graph(segs, vout="v", aout="a", fade_ms=6)
+    out = tmp_path / "jc.mp4"
+    media.run([media.ff(), "-v", "error", "-y", "-i", str(norm), "-filter_complex", g, "-map", "[v]", "-map", "[a]",
+               *cut.encode_args(cfg["render"]["draft"], 60), str(out)])
+    assert media.count_frames(out) == sum(s.fb - s.fa for s in segs)
+    fo, bo = _flash_times(out, 60), _beep_times(out)
+
+    def out_t(t):
+        o = 0.0
+        for s in segs:
+            if s.start <= t < s.end:
+                return o + (t - s.start)
+            o += s.dur
+        return None
+    exp = [(out_t(f), out_t(b)) for f, b in zip(fl, bp) if out_t(b) is not None and out_t(f) is not None
+           and 0.02 < out_t(b) < sum(s.dur for s in segs) - 0.08]
+    assert len(fo) == len(exp) and len(bo) == len(exp)
+    for (ef, eb), f, b in zip(exp, fo, bo):
+        assert abs(f - ef) <= 1 / 60 + 1e-6
+        assert abs(b - eb) <= 0.005

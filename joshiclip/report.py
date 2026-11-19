@@ -18,7 +18,7 @@ def build(A: dict, cands: list[dict], sel: dict, cfg, renders: dict) -> dict:
         c = cands[cid]
         first5 = " ".join(w["w"] for w in A["words"] if c["start"] <= w["s"] < c["start"] + 5)
         from .text import hinglish
-        shorts.append({"n": k, "file": f"short_{k:02d}.mp4", "cand": cid, "start": c["start"], "end": c["end"],
+        shorts.append({"n": k, "file": c.get("file", f"short_{k:02d}.mp4"), "cand": cid, "start": c["start"], "end": c["end"],
                        "dur": c["dur"], "tag": c["tag"], "title": c["title"], "picked_by": c["picked_by"],
                        "final": c["final"], "hook_score": c["hook_score"], "story_score": c["story_score"],
                        "hook_types": c["hook_types"], "reasons": c["reasons"], "cluster": c["cluster"],
@@ -74,11 +74,14 @@ def write(rep: dict, out_dir: Path, timings: dict) -> None:
         vr = s.get("render")
         if vr:
             au, gr = vr["audio"], vr["grade"]
-            L.append(f"- audio: {au['lufs']} LUFS, true peak {au['true_peak_dbtp']} dBTP, speech-to-background "
-                     f"{au['sbr_source_db']} -> {au['sbr_output_db']} dB")
+            L.append(f"- audio ({au.get('separator')}): {au['lufs']} LUFS, true peak {au['true_peak_dbtp']} dBTP"
+                     + (f", speech-to-background {au['sbr_source_db']} -> {au['sbr_output_db']} dB" if au.get('sbr_source_db') is not None else ", original sound kept"))
             L.append(f"- grade after/target: " + ", ".join(f"{k} {gr['after'][k]:.1f}/{gr['target'][k]:.1f}{'' if gr['within_10pct'][k] else ' (!)'}"
                                                           for k in gr["reference"]))
             L.append(f"- camera: faces in {vr['camera']['face_frames']:.0%} of frames, max zoom {vr['camera']['zoom_max']:.3f}")
+            jc = vr.get("jump_cuts") or []
+            L.append(f"- jump cuts (silence only): {len(jc)}, removed {sum(j['removed_s'] for j in jc):.1f}s"
+                     + ("" if not jc else " at " + ", ".join(f"{j['cut_from']:.1f}s" for j in jc)))
         ch = s.get("checks")
         if ch:
             L.append(f"- checks: fps {ch['out_fps']:.0f}/{ch['expected_fps']} · frames {ch['frames']}/{ch['expected_frames']} · "

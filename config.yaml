@@ -18,12 +18,51 @@ tools:
 channel:
   # Sourav Joshi Vlogs. UC<rest> -> UULF<rest> (long videos), UUSH<rest> (Shorts).
   official_id: UCjvgGbPPn-FgYeguc5nxG4A
+  official_vlogs_url: https://www.youtube.com/@souravjvlogs
+  official_shorts_url: https://www.youtube.com/@souravjocshorts/shorts
+  fan_urls: [https://www.youtube.com/@SouravAvantikaFun]
   fan_ids: [UCxaaicd0KNuc41-c0e5R2Cg]   # @SouravAvantikaFun
+  fan_shorts_playlists: [UUSHxaaicd0KNuc41-c0e5R2Cg]
+
+research:
+  catalog_file: catalog.json
+  report_file: report.json
+  latest_vlogs: 60
+  pair_max_day_delta: 1
+  pair_min_keyword_overlap: 1
+  pair_min_score: 0.35
+  normalize_as_of: null                # null = current UTC date at research time
+  audio_sample_rate: 8000
+  audio_block_s: 2.0
+  consensus_overlap_frac: 0.35
+  category_patterns:
+    drama_relationship: [saas, bahu, taunt, gussa, daant, ladai, jhagda, husband, wife, shaadi, breakup]
+    festival_emotional: [birthday, diwali, holi, rakhi, puja, emotional, surprise, ro, rona, yaad, miss]
+    dance: [dance, naach, nach, thumka, song, gaana]
+    funny_accident: [funny, comedy, hasi, hahaha, gir, gira, palat, bheeg, splash, accident]
+    money_numbers: [rupee, rs, lakh, crore, paisa, price, bill, number]
+    danger_loss_fear: [bach gaye, danger, darr, dar, kho, loss, gaya, gayi, chot, takra, accident]
+    travel_scenery: [trip, travel, vacation, pahad, mountain, beach, flight, hotel, road]
+    montage: [moments, memories, best, highlights, vlog, family]
+
+engine:
+  mode: moment_first                    # moment_first | legacy
+  min_shorts: 5
+  max_shorts: 12
+  min_score: 0.42
+  incident_window_s: 14
+  story_min_s: 38
+  story_max_s: 50
+  incident_min_s: 8
+  incident_max_s: 30
+  montage_enabled: true
+  montage_piece_s: [2, 4]
 
 download:
   update_first: true                     # yt-dlp -U before every download session
   sleep_interval: 3
   max_sleep_interval: 8
+  socket_timeout: 20                     # a stalled request is retried instead of hanging forever
   format: "bv*[height<=2160]+ba/b"
   merge_format: mkv
 
@@ -173,6 +212,14 @@ selection:
   region_s: 120
   max_per_region: 2
 
+jumpcuts:                                # micro jump cuts ONLY inside fully silent stretches (never inside speech)
+  enabled: true
+  min_silence_s: 1.0                     # a gap with no speech (VAD) and no laugh/scream at least this long ...
+  keep_pad_s: 0.25                       # ... keeps this much silence on each side; the middle is cut
+  edge_guard_s: 1.0                      # never cut in the first/last second of a Short
+  max_cut_frac: 0.3                      # cut at most 30 % of a Short
+  fade_ms: 6                             # tiny audio fades at each join (no clicks)
+
 layout:                                  # measured from reference/style_ref_02_user.png
   vertical: true
   canvas_draft: [720, 1280]
@@ -183,10 +230,10 @@ layout:                                  # measured from reference/style_ref_02_
   emoji_font: C:/Windows/Fonts/seguiemj.ttf
   title_size_frac: 0.030
   title_margin_frac: 0.04
-  sticker: true                          # big emoji near the top of the footage, as in the reference
+  sticker: false                         # user: no big emoji on the footage (emojis stay in the title header)
   sticker_size_frac: 0.17
   sticker_y_frac: 0.11
-  captions: true
+  captions: false                        # user: no captions on the video
   caption_font: C:/Windows/Fonts/segoeuib.ttf
   caption_size_frac: 0.030               # ~4 % of height incl. outline
   caption_max_words: 3
@@ -211,26 +258,29 @@ look:                                    # starting point; tune() matches the re
   clahe_mix: 0.6
   vibrance: 1.25
   sharpen: 0.35
-  glow: 0.12
+  glow: 0.09
   glow_thr: 0.75
+  clarity: 0.5
 
 look_tune:
-  tonal_strength: 0.65                   # tonal stats move 65% toward the reference; colour + local contrast 100%
+  tonal_strength: 0.5                    # tonal stats move 50% toward the reference
+  color_strength: 0.8                    # colour + local contrast move 80% (user: HDR a little softer)
 
 voice:
   denoise: true
-  pitch_semitones: -1.0                  # slightly deeper voice (duration preserved); 0 = off
-  formant: shifted                       # shifted = fuller/deeper timbre; preserved = same timbre
+  separator: none                        # none = keep the ORIGINAL sound (no noise removal) | dfn | demucs
+  pitch_semitones: 0.0                   # user: keep his original voice (no deepening); duration-preserving if set
+  formant: preserved
   low_shelf_hz: 150
-  low_shelf_db: 3.0
-  mud_cut_db: -2.5
-  presence_db: 2.0
-  comp_ratio: 2.5
-  reverb_wet: 0.10
+  low_shelf_db: 1.5
+  mud_cut_db: -1.5
+  presence_db: 1.5
+  comp_ratio: 1.8
+  reverb_wet: 0.07                       # user: echo good, slightly less
   reverb_decay_s: 0.5
   reverb_predelay_s: 0.02
   reverb_highcut_hz: 6000
-  echo_taps: [[110, -20], [220, -28]]    # light slap echo (ms, dB)
+  echo_taps: [[110, -24], [220, -32]]    # light slap echo (ms, dB)
   duck_db: -18
   bg_gap_db: -6
   duck_attack_ms: 50
@@ -238,9 +288,24 @@ voice:
   target_lufs: -14
   true_peak_db: -1.0
 
+fast:                                    # `joshiclip run --fast`: 360p analysis + 4K only for the winning spans
+  source: auto                           # auto (YouTube, falls back to a local normalized copy) | youtube | local
+  proxy_format: "134+251/bv*[height<=360][vcodec^=avc1]+ba/b[height<=360]"
+  sub_langs: "hi-orig,hi"
+  asr_model: large-v3-turbo              # only used when YouTube has no Hindi auto-captions
+  clip_format: "bv*[height<=2160][fps<=60]+ba/b"
+  clip_pad_s: 3
+  parallel_downloads: 3
+  parallel_renders: 4                    # Shorts rendered at the same time (each: decoder + encoder + frame workers)
+  frame_workers: 3
+  x264_threads: 3
+  separator: none                        # keep original sound; dfn | demucs available
+  render_preset: medium                  # same CRF as final; x264 medium vs slow = ~1.5x faster, near-identical
+
 render:
   draft: {height: 720, preset: veryfast, crf: 23, audio_bitrate: 160k}
   final: {height: 1080, preset: slow, crf: 17, audio_bitrate: 256k}
   export_candidates: {height: 360, preset: veryfast, crf: 28, audio_bitrate: 96k}
   x264_threads: 8
-  frame_workers: 4                       # frames graded in parallel (OpenCV releases the GIL); output order fixed
+  grade_samples: 5
+  frame_workers: 6                       # frames graded in parallel (OpenCV releases the GIL); output order fixed

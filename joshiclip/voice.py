@@ -39,7 +39,7 @@ def _ff_filter(x: np.ndarray, af: str) -> np.ndarray:
     return _fit(y, n)
 
 
-def separate(x: np.ndarray, threads: int = 8) -> tuple[np.ndarray, np.ndarray]:
+def separate(x: np.ndarray, threads: int = 4) -> tuple[np.ndarray, np.ndarray]:
     """Demucs htdemucs -> (vocals mono, background stereo) at 48 kHz, same length."""
     import torch
     from demucs.apply import apply_model
@@ -59,12 +59,21 @@ def separate(x: np.ndarray, threads: int = 8) -> tuple[np.ndarray, np.ndarray]:
     return _fit(voc.mean(1).astype(np.float32), len(x)), _fit(bg.astype(np.float32), len(x))
 
 
+import threading
+
+_DF = {}
+_DF_LOCK = threading.Lock()
+
+
 def denoise(v: np.ndarray) -> np.ndarray:
+    """DeepFilterNet3. The model is loaded once (its logger setup is not thread-safe) and calls are serialized."""
     import torch
     from df.enhance import enhance, init_df
-    torch.manual_seed(0)
-    model, state, _ = init_df(log_level="ERROR")
-    y = enhance(model, state, torch.from_numpy(v[None].copy())).numpy()[0]
+    with _DF_LOCK:
+        if "m" not in _DF:
+            torch.manual_seed(0)
+            _DF["m"], _DF["s"], _ = init_df(log_level="ERROR")
+        y = enhance(_DF["m"], _DF["s"], torch.from_numpy(v[None].copy())).numpy()[0]
     return _fit(y.astype(np.float32), len(v))
 
 
@@ -135,10 +144,30 @@ def process(src_wav: Path, out_wav: Path, c: dict, log=print) -> dict:
     assert sr == SR
     n = len(x)
     rep = {"samples": n}
-    voc, bg = separate(x)
+    if c.get("separator", "demucs") == "none":
+        # keep the ORIGINAL sound: no separation, no denoise, no ducking. Only light warm EQ + a little echo.
+        eq = (f"equalizer=f={c['low_shelf_hz']}:t=h:w=200:g={c['low_shelf_db']},"
+              f"equalizer=f=350:t=q:w=1.2:g={c['mud_cut_db']},equalizer=f=4000:t=q:w=1.0:g={c['presence_db']},"
+              f"acompressor=threshold=-20dB:ratio={c['comp_ratio']}:attack=8:release=120:makeup=1")
+        if c["pitch_semitones"]:
+            ratio = 2 ** (c["pitch_semitones"] / 12)
+            eq = f"rubberband=pitch={ratio:.5f}:formant={c['formant']}:transients=smooth," + eq
+        y = _ff_filter(x, eq)
+        mix = np.stack([add_space(y[:, ch].copy(), c) for ch in range(y.shape[1])], 1)
+        rep.update(separator="none", sbr_source_db=None, sbr_output_db=None)
+        return _finish_loudness(mix, n, out_wav, c, rep)
+    if c.get("separator", "demucs") == "dfn":
+        # fast: DeepFilterNet on the mix = clean voice; background = mix - voice (ambience/music kept for ducking)
+        voc = denoise(x.mean(1).astype(np.float32))
+        bg = (x - voc[:, None]).astype(np.float32)
+        v = voc
+    else:
+        voc, bg = separate(x)
+    rep["separator"] = c.get("separator", "demucs")
     rep["sbr_source_db"] = round(sbr_db(voc, bg), 2)
     assert len(voc) == n and len(bg) == n
-    v = denoise(voc) if c["denoise"] else voc
+    if rep["separator"] != "dfn":
+        v = denoise(voc) if c["denoise"] else voc
     assert len(v) == n
     if c["pitch_semitones"]:
         ratio = 2 ** (c["pitch_semitones"] / 12)
@@ -157,7 +186,11 @@ def process(src_wav: Path, out_wav: Path, c: dict, log=print) -> dict:
     mix = v[:, None] + bgd
     rep["sbr_output_db"] = round(sbr_db(v, bgd), 2)
     rep["speech_frac"] = round(float((gate > 0.5).mean()), 3)
-    # loudness -> -14 LUFS, true peak <= -1 dBTP (static gain, then a lookahead limiter only if needed)
+    return _finish_loudness(mix, n, out_wav, c, rep)
+
+
+def _finish_loudness(mix: np.ndarray, n: int, out_wav: Path, c: dict, rep: dict) -> dict:
+    """-14 LUFS, true peak <= -1 dBTP (static gain, then a lookahead limiter only if needed); length asserted."""
     L = loudness(mix)
     mix = mix * 10 ** ((c["target_lufs"] - L) / 20)
     if true_peak_db(mix) > c["true_peak_db"]:
@@ -184,3 +217,16 @@ def extract_span(norm: Path, span, out_wav: Path) -> None:
     assert abs(len(x) - span.n_samples) <= 1, (len(x), span.n_samples)
     if len(x) != span.n_samples:
         sf.write(out_wav, _fit(x, span.n_samples), SR, subtype="FLOAT")
+
+
+def extract_segments(path: Path, spans: list, out_wav: Path, fade_ms: float = 0.0) -> None:
+    """Exact-sample audio for several frame-exact segments, joined in one graph (same cut points as the video)."""
+    from . import cut
+    g = cut.multi_trim_graph(spans, aout="a", fade_ms=fade_ms, want_video=False)
+    media.run([media.ff(), "-v", "error", "-y", "-ss", f"{max(0.0, spans[0].start - 3):.6f}", "-copyts", "-i", str(path),
+               "-filter_complex", g, "-map", "[a]", "-ac", "2", "-ar", str(SR), "-c:a", "pcm_f32le", str(out_wav)])
+    x, _ = sf.read(out_wav, dtype="float32", always_2d=True)
+    want = sum(s.n_samples for s in spans)
+    assert abs(len(x) - want) <= len(spans), (len(x), want)
+    if len(x) != want:
+        sf.write(out_wav, _fit(x, want), SR, subtype="FLOAT")

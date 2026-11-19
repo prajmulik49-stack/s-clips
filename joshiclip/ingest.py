@@ -45,7 +45,8 @@ _updated = False
 def ytdlp_base(cfg: Config) -> list[str]:
     d = cfg["download"]
     return [sys.executable, "-m", "yt_dlp", *tools.ytdlp_args(), "--sleep-interval", str(d["sleep_interval"]),
-            "--max-sleep-interval", str(d["max_sleep_interval"]), "--no-warnings"]
+            "--max-sleep-interval", str(d["max_sleep_interval"]), "--socket-timeout", str(d.get("socket_timeout", 20)),
+            "--retries", "10", "--extractor-retries", "5", "--no-warnings"]
 
 
 def ytdlp_update(cfg: Config, log=print) -> None:

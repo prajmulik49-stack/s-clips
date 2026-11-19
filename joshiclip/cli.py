@@ -28,6 +28,9 @@ def main(argv=None) -> int:
     p = sub.add_parser("bench-asr", help="benchmark Whisper models on an excerpt"); _common(p)
     p.add_argument("target")
 
+    p = sub.add_parser("research", help="catalog the latest vlogs and both Shorts sources"); _common(p)
+    p.add_argument("--limit", type=int, default=None, help="number of latest vlogs (default: config research.latest_vlogs)")
+
     p = sub.add_parser("run", help="full pipeline"); _common(p)
     p.add_argument("target", nargs="?"); p.add_argument("--latest", action="store_true")
     g = p.add_mutually_exclusive_group()
@@ -37,6 +40,7 @@ def main(argv=None) -> int:
     p.add_argument("--preview-debug", action="store_true")
     p.add_argument("--no-render", action="store_true", help="plan + report only")
     p.add_argument("--plain", action="store_true", help="plain 16:9 cuts instead of the vertical layout")
+    p.add_argument("--fast", action="store_true", help="360p analysis + YouTube captions + 4K only for winners (~10-15 min)")
 
     p = sub.add_parser("explain"); _common(p); p.add_argument("report")
 
@@ -65,9 +69,17 @@ def main(argv=None) -> int:
         vid, src = ingest.resolve_source(cfg, a.target, False)
         bench(cfg, workdir_for(cfg, a.id or vid))
         return 0
+    if a.cmd == "research":
+        from .text import lex
+        lex.set_lexicon(config_mod.load_lexicon(cfg))
+        from .research import run
+        return run(cfg, a.limit)
     if a.cmd == "run":
-        from .pipeline import run
         mode = "final" if a.final else "draft"
+        if a.fast:
+            from .fast import run_fast
+            return run_fast(cfg, a.target, a.latest, a.id, mode=mode if (a.final or a.draft) else "final", max_shorts=a.max_shorts)
+        from .pipeline import run
         return run(cfg, a.target, a.latest, a.id, mode=mode, max_shorts=a.max_shorts,
                    export_candidates=a.export_candidates, preview_debug=a.preview_debug, render=not a.no_render,
                    plain=a.plain)

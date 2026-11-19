@@ -10,7 +10,10 @@ import numpy as np
 
 
 def path(vision: dict, span_start: float, n_frames: int, fps: int, src_aspect: float, out_aspect: float,
-         scene_cuts: list[float], peak_t: float | None, cfg: dict) -> dict:
+         scene_cuts: list[float], peak_t: float | None, cfg: dict, times: np.ndarray | None = None) -> dict:
+    """times: analysis-timeline time of each output frame (jump cuts make it non-contiguous); default contiguous."""
+    if times is None:
+        times = span_start + np.arange(n_frames) / fps
     vf = float(vision["fps"])
     faces = vision["faces"]                              # [N, 4, 5] x, y, w, h, score (normalized)
     base_w = out_aspect / src_aspect                     # crop width (fraction of source width) at zoom 1
@@ -19,7 +22,7 @@ def path(vision: dict, span_start: float, n_frames: int, fps: int, src_aspect: f
     has = np.zeros(n_frames, bool)
     last = 0.5
     for i in range(n_frames):
-        t = span_start + i / fps
+        t = float(times[i])
         k = int(round(t * vf))
         if 0 <= k < len(faces):
             fs = [f for f in faces[k] if f[2] > 0.01]
@@ -34,7 +37,13 @@ def path(vision: dict, span_start: float, n_frames: int, fps: int, src_aspect: f
                 last = float(cx); has[i] = True
         targets[i] = last
     # dead-zone + critically damped spring (omega rad/s); snap on scene cuts
-    cut_frames = {int(round((c - span_start) * fps)) for c in scene_cuts if span_start <= c < span_start + n_frames / fps}
+    cut_frames = set()
+    for c in scene_cuts:                                   # first output frame at/after each scene cut
+        j = int(np.searchsorted(times, c))
+        if 0 < j < n_frames and times[j - 1] < c:
+            cut_frames.add(j)
+    jumps = np.flatnonzero(np.diff(times) > 1.5 / fps) + 1   # jump cuts also snap the camera
+    cut_frames.update(int(j) for j in jumps)
     w = cfg["omega"]
     dt = 1.0 / fps
     x = targets[0]; v = 0.0
@@ -53,9 +62,7 @@ def path(vision: dict, span_start: float, n_frames: int, fps: int, src_aspect: f
     # zoom: gentle push-in towards the peak, eased
     z = np.full(n_frames, zmin)
     if peak_t is not None:
-        tp = (peak_t - span_start) * fps
-        idx = np.arange(n_frames)
-        bump = np.exp(-0.5 * ((idx - tp) / (cfg["zoom_sigma_s"] * fps)) ** 2)
+        bump = np.exp(-0.5 * ((times - peak_t) / cfg["zoom_sigma_s"]) ** 2)
         z = zmin + (zmax - zmin) * bump
     cw = base_w / z
     xs = np.clip(xs, cw / 2, 1 - cw / 2)
