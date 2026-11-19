@@ -1,0 +1,172 @@
+# JoshiClip configuration. Every weight, threshold, lexicon path and preset lives here.
+# Changing a section invalidates only the cached stages that depend on it.
+
+paths:
+  work: work            # work/<video_id>/<stage>.json|.npy
+  out: out              # out/<video_id>/short_NN.mp4 + report
+  downloads: data/downloads
+  models: models
+  lexicon: config/lexicon.yaml
+  style_ref: reference/style_ref_01.png
+  research: research
+
+tools:
+  ffmpeg: null          # absolute path override; null = auto-resolve (shutil.which -> registry PATH -> known dirs)
+  fpcalc: null
+
+channel:
+  # Sourav Joshi Vlogs. UC<rest> -> UULF<rest> (long videos), UUSH<rest> (Shorts).
+  official_id: UCjvgGbPPn-FgYeguc5nxG4A
+  fan_ids: [UCxaaicd0KNuc41-c0e5R2Cg]   # @SouravAvantikaFun
+
+download:
+  update_first: true                     # yt-dlp -U before every download session
+  sleep_interval: 3
+  max_sleep_interval: 8
+  format: "bv*[height<=2160]+ba/b"
+  merge_format: mkv
+
+normalize:
+  allowed_fps: [30, 60]                  # source nominal fps is snapped to the nearest of these
+  max_height: 2160                       # keep 4K when the source has it (final renders can be 2160x3840)
+  video_codec: libx264
+  crf: 16
+  preset: veryfast                       # x264 preset for the one-time CFR normalization
+  x264_threads: 0                        # 0 = auto; fixed value keeps the bitstream reproducible
+  hwaccel_decode: none                   # none | qsv  (decode only; QSV VP9/H.264 decoding is bit-exact)
+  audio_codec: flac                      # lossless + no encoder priming delay -> sample-exact cuts
+  audio_rate: 48000
+  proxy_height: 360
+  proxy_max_fps: 30                      # proxy fps = norm fps if <= this, else norm fps / 2
+  proxy_crf: 28
+
+sync:
+  max_av_offset_ms: 40
+  probe_len_s: 1.5
+
+asr:
+  engine: faster-whisper
+  model: large-v3-turbo                  # benchmark result recorded in research/ASR_BENCHMARK.md
+  candidates: [large-v3-turbo, large-v3]
+  compute_type: int8
+  cpu_threads: 8
+  language: hi
+  beam_size: 5
+  temperature: 0.0
+  vad_filter: true
+  condition_on_previous_text: false
+  bench_excerpt_s: [300, 420]            # excerpt used by `joshiclip bench-asr`
+
+align:
+  engine: mms_fa                         # torchaudio MMS forced aligner on romanized words | none
+  max_shift_s: 0.25                      # refined word edges may move at most this far from Whisper's
+  vad_threshold: 0.5
+
+sentences:
+  end_punct: ["।", "?", "!", ".", "|"]
+  split_pause_s: 0.6                     # also split at word gaps >= this
+  max_len_s: 12.0                        # split long run-ons at the largest internal gap
+  min_len_s: 0.6
+
+diarization:
+  engine: mfcc_agglomerative             # lightweight, deterministic
+  distance_threshold: 6.0
+  max_speakers: 6
+  min_sentence_s: 0.8
+
+features:
+  frame_hop_s: 0.01
+  pitch_fmin: 70
+  pitch_fmax: 500
+  vision_fps: 2                          # faces / motion / colour histograms on the proxy
+  face_min_confidence: 0.5
+  yamnet_classes:
+    laugh: [Laughter, Giggle, Chuckle, chortle, Belly laugh, Baby laughter, Snicker]
+    cheer: [Cheering, Applause, Crowd, Children shouting]
+    scream: [Screaming, Shout, Yell, Bellow, Whoop, Battle cry]
+    music: [Music]
+    gasp: [Gasp]
+    cry: [Crying, sobbing, Baby cry, infant cry, Whimper]
+    dog: [Dog, Bark, Yip, Howl, Growling]
+  scene_threshold: 27.0                  # PySceneDetect ContentDetector
+
+topics:
+  block_sentences: 4                     # TextTiling block size (sentences)
+  boundary_min_depth: 0.12
+  location_hist_window_s: 5
+  location_hist_threshold: 0.45          # Bhattacharyya distance between colour histograms
+  ambience_threshold: 0.35
+  weights: {text: 0.5, location: 0.3, ambience: 0.2}
+  boundary_threshold: 0.35
+
+peaks:
+  min_separation_s: 8
+  min_z: 1.5
+  weights: {laugh: 1.0, scream: 0.9, cheer: 0.6, energy: 0.5, gasp: 0.6, reveal: 0.6, comments: 1.2}
+
+candidates:
+  len_pref_s: [40, 50]
+  len_allow_s: [35, 55]
+  max_ends_per_start: 2
+
+filters:
+  intro_window_s: 5                      # intro/outro phrases are checked in the first N seconds of a clip
+  edge_zone_s: 30                        # candidates in the first/last 30 s of the video ...
+  edge_keep_top_pct: 5                   # ... survive only when in the top 5% by score
+  min_pause_before_s: 0.6
+  min_speech_frac: 0.5
+  max_no_face_frac: 0.6
+  location_change_zone: [0.1, 0.9]      # a location change inside this part of the clip rejects it
+  location_change_score: 0.65
+  phrase_match_ratio: 85                 # rapidfuzz partial ratio on phonetic keys
+
+scoring:
+  hook_window_s: 3
+  weights_final: {hook: 0.40, story: 0.45, viewer: 0.15}
+  hook:
+    first_word: 1.0
+    first_sentence: 0.8
+    energy_jump: 0.8
+    pitch_jump: 0.5
+    question: 0.7
+    reveal: 0.8
+    danger: 0.9
+    conflict: 0.6
+    funny: 1.0
+    name_call: 0.5
+    emotional: 0.5
+    open_loop: 0.6
+    lexicon: 0.5
+  story:
+    setup: 0.6
+    arc: 1.0
+    peak_position: 0.8
+    payoff: 1.0
+    one_scene: 0.5
+    coherence: 0.6
+    interaction: 0.7
+    dead_air: 0.8          # penalty weight
+    viewer: 0.0            # viewer signal lives in the final blend
+    loop: 0.2
+  peak_pos_range: [0.55, 0.85]
+  payoff_after_peak_s: 8
+  end_after_payoff_s: 4
+  dead_air_gap_s: 1.5
+  first_word_best_s: 0.4
+  first_word_worst_s: 2.0
+  round: 6
+
+selection:
+  seconds_per_short: 120
+  min_shorts: 3
+  max_shorts: 6
+  min_score: 0.35
+  max_overlap_frac: 0.10
+  region_s: 120
+  max_per_region: 2
+
+render:
+  draft: {height: 720, preset: veryfast, crf: 23, audio_bitrate: 160k}
+  final: {height: 1080, preset: slow, crf: 17, audio_bitrate: 256k}
+  export_candidates: {height: 360, preset: veryfast, crf: 28, audio_bitrate: 96k}
+  x264_threads: 8

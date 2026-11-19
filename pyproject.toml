@@ -1,0 +1,17 @@
+[project]
+name = "joshiclip"
+version = "6.0.0"
+description = "Deterministic, no-LLM engine: Sourav Joshi vlog -> vertical Shorts"
+requires-python = ">=3.10"
+dependencies = ["yt-dlp", "numpy<2", "scipy", "PyYAML", "faster-whisper", "onnxruntime", "mediapipe",
+  "opencv-python", "scenedetect", "librosa", "soundfile", "scikit-learn", "lightgbm", "RapidFuzz",
+  "torch", "torchaudio", "pillow", "demucs", "deepfilternet", "pyloudnorm", "rapidocr-onnxruntime", "pytest"]
+
+[project.scripts]
+joshiclip = "joshiclip.cli:main"
+
+[tool.setuptools]
+packages = ["joshiclip", "joshiclip.analysis", "joshiclip.text"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
