@@ -25,7 +25,8 @@ def xcorr_lag(a: np.ndarray, b: np.ndarray, max_lag: int) -> tuple[float, float]
         bb = b[L:L + len(a)]
         if len(bb) < len(a):
             cs.append(-1e9); continue
-        cs.append(float(np.dot(a, _z(bb)) / len(a)))
+        v = float(np.dot(a, _z(bb)) / len(a)) if len(a) else -1e9
+        cs.append(v if np.isfinite(v) else -1e9)
     cs = np.array(cs)
     k = int(np.argmax(cs))
     frac = 0.0
@@ -78,12 +79,15 @@ def check_render(out_path, src_path, span: tuple[float, float], fps: float, prob
     res["n_reliable_probes"] = len(rel)
     res["max_abs_av_offset_ms"] = round(max([abs(p["av_offset_ms"]) for p in rel] or [0.0]), 1)
     res["max_abs_audio_lag_ms"] = round(max(abs(p["audio_lag_ms"]) for p in res["probes"] if p["audio_corr"] > 0.5) if any(p["audio_corr"] > 0.5 for p in res["probes"]) else 0.0, 1)
+    n_audio_ok = sum(1 for p in res["probes"] if p["audio_corr"] > 0.5)
     res["checks"] = {
+        "probes_reliable": len(rel) >= 2 and n_audio_ok >= 2,
         "fps_match": abs(v["avg_fps"] - fps) < 1e-3,
         "frames_match": abs(nf - exp_frames) <= 1,
         "audio_len_match": abs(au["duration"] - (b - a)) <= 1.0 / fps + 0.025,  # AAC frame granularity
         "av_offset_ok": res["max_abs_av_offset_ms"] <= max_offset_ms,
         "audio_aligned": res["max_abs_audio_lag_ms"] <= max_offset_ms,
     }
+    res["checks"] = {k: bool(v) for k, v in res["checks"].items()}
     res["ok"] = all(res["checks"].values())
     return res

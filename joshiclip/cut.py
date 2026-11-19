@@ -53,11 +53,13 @@ def seek_args(span: Span, preroll: float = 3.0) -> list[str]:
 
 
 def trim_graph(span: Span, vin: str = "0:v", ain: str = "0:a", vout: str = "v0", aout: str = "a0") -> str:
-    """trim/atrim on absolute timestamps (half-frame guards so exactly frames fa..fb-1 are kept)."""
+    """trim/atrim on absolute timestamps (half-frame guards so exactly frames fa..fb-1 are kept).
+    NOTE: atrim start_sample/end_sample count samples from the first sample *received* (i.e. from the seek point),
+    not from the timestamp, so they are wrong after an input seek. Use pts-based start/end on the sample grid."""
     t0 = (span.fa - 0.5) / span.fps
     t1 = (span.fb - 0.5) / span.fps
     return (f"[{vin}]trim=start={t0:.6f}:end={t1:.6f},setpts=PTS-STARTPTS[{vout}];"
-            f"[{ain}]atrim=start_sample={span.sa}:end_sample={span.sb},asetpts=PTS-STARTPTS[{aout}]")
+            f"[{ain}]atrim=start={span.sa / span.sr:.9f}:end={span.sb / span.sr:.9f},asetpts=PTS-STARTPTS[{aout}]")
 
 
 def encode_args(preset: dict, fps: int, threads: int = 0) -> list[str]:

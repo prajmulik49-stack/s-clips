@@ -41,8 +41,9 @@ def cfg():
     return config.load()
 
 
-@pytest.mark.parametrize("fps_expr,target,jitter", [("60", 60, 0.35), ("30000/1001", 30, 0.3), ("30", 30, 0.0)])
-def test_normalize_and_cut_keep_sync(tmp_path, cfg, fps_expr, target, jitter):
+@pytest.mark.parametrize("fps_expr,target,jitter,cut_at", [("60", 60, 0.35, (1.93, 6.61)), ("60", 60, 0.0, (4.37, 8.2)),
+                                                            ("30000/1001", 30, 0.3, (4.37, 8.2)), ("30", 30, 0.0, (1.93, 6.61))])
+def test_normalize_and_cut_keep_sync(tmp_path, cfg, fps_expr, target, jitter, cut_at):
     src = tmp_path / "src.mkv"
     _make_source(src, fps_expr, 60 if target == 60 else 30, jitter, 44100)
     meta = ingest.normalize(cfg, src, tmp_path / "w")
@@ -59,7 +60,7 @@ def test_normalize_and_cut_keep_sync(tmp_path, cfg, fps_expr, target, jitter):
         assert abs(b - sb) <= 0.003, (sb, b)
 
     # cut a span that starts/ends at odd times; must be frame-snapped, exact length, in sync
-    span = cut.snap(1.93, 6.61, target)
+    span = cut.snap(*cut_at, target)   # (4.37, 8.2) forces a non-zero input seek (preroll 3 s)
     out = tmp_path / "cut.mp4"
     media.run(cut.cut_plain(norm, span, out, cfg["render"]["draft"]))
     assert media.count_frames(out) == span.fb - span.fa
@@ -76,6 +77,7 @@ def test_normalize_and_cut_keep_sync(tmp_path, cfg, fps_expr, target, jitter):
     rep = sync.check_render(out, norm, (span.start, span.end), target, probe_len=1.2)
     assert rep["checks"]["fps_match"] and rep["checks"]["frames_match"] and rep["checks"]["audio_len_match"]
     assert rep["max_abs_audio_lag_ms"] <= 40
+    assert media.audio_samples(out, 48000) >= span.n_samples - 1024   # audio really covers the span (AAC tail padding aside)
 
 
 def test_snap_integer_samples():

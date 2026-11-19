@@ -1,0 +1,48 @@
+# Sourav Joshi lexicon. source: seed (hand-written from the spec + v5 research).
+# `joshiclip research` (build step 4) mines names / reactions / intro-outro phrases from his transcripts and
+# rewrites the mined sections, keeping this file's structure. Phrases are Roman; matching is phonetic,
+# so Devanagari Whisper output ("वेलकम टू माय व्लॉग") matches "welcome to my vlog".
+source: seed
+
+names: [Piyush, Mummy, Papa, Sourav, Avantika, Kunali, Sahil, Oreo, Toffee, Dada, Dadi, Nani, Nana, Bhaiya, Didi]
+
+intro_outro:
+  - welcome to my vlog
+  - welcome to my new vlog
+  - hello guys
+  - hey guys
+  - good morning guys
+  - namaste doston
+  - aaj ke vlog mein
+  - aaj ka vlog
+  - subscribe
+  - like share
+  - like karo
+  - bell icon
+  - milte hai next vlog
+  - milte hain kal
+  - next vlog mein
+  - bye bye guys
+  - comment karke batana
+  - comment box
+
+sponsor: [sponsor, sponsored, link description, description mein, discount code, coupon code, download karo, app download]
+
+dependent_first: [aur, phir, fir, toh, to, woh, vo, isliye, lekin, matlab, usne, wahi, vahi, but, and, so, kyunki, jabki, tabhi, uske, iske]
+
+incomplete_end: [aur, ki, ke, ka, ko, se, mein, jo, ya, toh, lekin, but, and, kyunki, agar, jab, ki, wala, wali, ke liye, matlab]
+
+hook:
+  question: [kya hua, pata hai, kya, kyun, kaise, kaun, kahan, kya hai, sach mein, kya kar raha]
+  reveal: [dekho, ye dekho, ye kya hai, wow, are wah, dikhata hun, surprise, oh my god, omg, finally]
+  danger: [bach gaye, gir, gira, giri, bachao, sambhal, dhyan se, ruko, chot, khatarnak, accident, darr, dar gaya]
+  emotional: [ro, rona, sad, miss, yaad, dukh, emotional, pyaar, maaf, sorry]
+  food: [khana, khao, swad, tasty, maza aa gaya, pizza, chai, mithai]
+
+reactions: [arey, arre, hahaha, kya baat, mast, pagal, bhai, yaar, oye, chal, are yaar, kamaal, gazab, ohho]
+
+stopwords: [hai, hain, tha, thi, the, ka, ki, ke, ko, se, mein, main, to, toh, bhi, hi, na, nahi, ye, vo, woh, aur,
+            kya, ek, jo, is, us, pe, par, ho, hua, kar, raha, rahi, rahe, gaya, gayi, ab, abhi, phir, haan, yaar,
+            bhai, toh, ji, a, the, is, it, and, to, of, i, you]
+
+romanize: {}
