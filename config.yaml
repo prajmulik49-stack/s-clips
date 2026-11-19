@@ -7,7 +7,8 @@ paths:
   downloads: data/downloads
   models: models
   lexicon: config/lexicon.yaml
-  style_ref: reference/style_ref_01.png
+  style_ref: reference/style_ref_02_user.png
+  style_ref_metrics: research/style_ref_metrics.json
   research: research
 
 tools:
@@ -30,8 +31,8 @@ normalize:
   allowed_fps: [30, 60]                  # source nominal fps is snapped to the nearest of these
   max_height: 2160                       # keep 4K when the source has it (final renders can be 2160x3840)
   video_codec: libx264
-  crf: 16
-  preset: veryfast                       # x264 preset for the one-time CFR normalization
+  crf: 15
+  preset: superfast                      # x264 preset for the one-time CFR normalization (4K veryfast took 2.6 h)
   x264_threads: 0                        # 0 = auto; fixed value keeps the bitstream reproducible
   hwaccel_decode: none                   # none | qsv  (decode only; QSV VP9/H.264 decoding is bit-exact)
   audio_codec: flac                      # lossless + no encoder priming delay -> sample-exact cuts
@@ -172,8 +173,74 @@ selection:
   region_s: 120
   max_per_region: 2
 
+layout:                                  # measured from reference/style_ref_02_user.png
+  vertical: true
+  canvas_draft: [720, 1280]
+  canvas_final: [1080, 1920]
+  header_frac: 0.085                     # white header with the title
+  video_frac: 0.823                      # footage full-width below it; the rest is a white footer band
+  title_font: C:/Windows/Fonts/segoeuib.ttf
+  emoji_font: C:/Windows/Fonts/seguiemj.ttf
+  title_size_frac: 0.030
+  title_margin_frac: 0.04
+  sticker: true                          # big emoji near the top of the footage, as in the reference
+  sticker_size_frac: 0.17
+  sticker_y_frac: 0.11
+  captions: true
+  caption_font: C:/Windows/Fonts/segoeuib.ttf
+  caption_size_frac: 0.030               # ~4 % of height incl. outline
+  caption_max_words: 3
+  caption_y_frac: 0.50                   # vertical middle of the footage ...
+  caption_y_alt_frac: 0.80               # ... or lower when a face is in the way
+  caption_highlight: [255, 214, 10]
+
+camera:
+  zoom_min: 1.00
+  zoom_max: 1.08
+  zoom_sigma_s: 2.5
+  omega: 2.2                             # spring stiffness (rad/s): slow, critically damped
+  deadzone: 0.12                         # ignore face moves smaller than 12 % of the crop width
+
+look:                                    # starting point; tune() matches the reference within +-10 %
+  black: 2.0
+  white: 98.0
+  gamma: 1.0
+  shoulder: 0.35
+  lift: 0.02
+  clahe: 1.8
+  clahe_mix: 0.6
+  vibrance: 1.25
+  sharpen: 0.35
+  glow: 0.12
+  glow_thr: 0.75
+
+look_tune:
+  tonal_strength: 0.65                   # tonal stats move 65% toward the reference; colour + local contrast 100%
+
+voice:
+  denoise: true
+  pitch_semitones: -1.0                  # slightly deeper voice (duration preserved); 0 = off
+  formant: shifted                       # shifted = fuller/deeper timbre; preserved = same timbre
+  low_shelf_hz: 150
+  low_shelf_db: 3.0
+  mud_cut_db: -2.5
+  presence_db: 2.0
+  comp_ratio: 2.5
+  reverb_wet: 0.10
+  reverb_decay_s: 0.5
+  reverb_predelay_s: 0.02
+  reverb_highcut_hz: 6000
+  echo_taps: [[110, -20], [220, -28]]    # light slap echo (ms, dB)
+  duck_db: -18
+  bg_gap_db: -6
+  duck_attack_ms: 50
+  duck_release_ms: 300
+  target_lufs: -14
+  true_peak_db: -1.0
+
 render:
   draft: {height: 720, preset: veryfast, crf: 23, audio_bitrate: 160k}
   final: {height: 1080, preset: slow, crf: 17, audio_bitrate: 256k}
   export_candidates: {height: 360, preset: veryfast, crf: 28, audio_bitrate: 96k}
   x264_threads: 8
+  frame_workers: 4                       # frames graded in parallel (OpenCV releases the GIL); output order fixed

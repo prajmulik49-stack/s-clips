@@ -36,6 +36,7 @@ def main(argv=None) -> int:
     p.add_argument("--export-candidates", action="store_true")
     p.add_argument("--preview-debug", action="store_true")
     p.add_argument("--no-render", action="store_true", help="plan + report only")
+    p.add_argument("--plain", action="store_true", help="plain 16:9 cuts instead of the vertical layout")
 
     p = sub.add_parser("explain"); _common(p); p.add_argument("report")
 
@@ -68,7 +69,8 @@ def main(argv=None) -> int:
         from .pipeline import run
         mode = "final" if a.final else "draft"
         return run(cfg, a.target, a.latest, a.id, mode=mode, max_shorts=a.max_shorts,
-                   export_candidates=a.export_candidates, preview_debug=a.preview_debug, render=not a.no_render)
+                   export_candidates=a.export_candidates, preview_debug=a.preview_debug, render=not a.no_render,
+                   plain=a.plain)
     if a.cmd == "explain":
         from .report import explain
         return explain(a.report)

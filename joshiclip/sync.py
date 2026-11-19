@@ -59,8 +59,39 @@ def video_lag_ms(out_path, src_path, t_out: float, t_src: float, L: float, fps: 
     return lag * 1000.0 / fps, c
 
 
+def _strips(img: np.ndarray, frac: float = 0.15) -> np.ndarray:
+    w = img.shape[-1]
+    k = max(2, int(w * frac))
+    return np.concatenate([img[..., :k], img[..., -k:]], axis=-1)
+
+
+def video_lag_vertical_ms(out_path, src_path, t_out: float, t_src: float, L: float, fps: float, vgeom: dict,
+                          search: float = 0.25) -> tuple[float, float]:
+    """Vertical renders: rebuild the expected footage from the source with the SAME camera path, compare only the
+    outer left/right strips of the footage area (no sticker / captions there)."""
+    W, H, vy, vh = vgeom["W"], vgeom["H"], vgeom["video_y"], vgeom["video_h"]
+    sw, sh = 480, 270
+    o = media.read_gray(out_path, t_out, L, fps, W // 4, H // 4)[:, vy // 4:(vy + vh) // 4]
+    s = media.read_gray(src_path, t_src - search, L + 2 * search, fps, sw, sh)
+    cx, z, f0 = np.asarray(vgeom["cx"]), np.asarray(vgeom["zoom"]), vgeom["frame0"]
+    import cv2
+    oh, ow = o.shape[1:]
+    rows = []
+    for j in range(len(s)):
+        k = int(np.clip(round((t_src - search) * fps) + j - f0, 0, len(cx) - 1))
+        ch = sh / z[k]; cw = ch * W / vh
+        x0 = float(np.clip(cx[k] * sw - cw / 2, 0, sw - cw)); y0 = (sh - ch) / 2
+        M = np.array([[cw / ow, 0, x0], [0, ch / oh, y0]])
+        rows.append(cv2.warpAffine(s[j], M, (ow, oh), flags=cv2.INTER_AREA | cv2.WARP_INVERSE_MAP))
+    s2 = np.array(rows)
+    oa = np.abs(np.diff(_strips(o), axis=0)).mean((1, 2))
+    sa = np.abs(np.diff(_strips(s2), axis=0)).mean((1, 2))
+    lag, c = xcorr_lag(oa, sa, int(round(search * fps)))
+    return lag * 1000.0 / fps, c
+
+
 def check_render(out_path, src_path, span: tuple[float, float], fps: float, probe_len: float = 1.5,
-                 max_offset_ms: float = 40.0) -> dict:
+                 max_offset_ms: float = 40.0, vgeom: dict | None = None) -> dict:
     """Duration / fps / A/V offset checks for one continuous-span render."""
     a, b = span
     info = media.probe(out_path)
@@ -72,7 +103,10 @@ def check_render(out_path, src_path, span: tuple[float, float], fps: float, prob
     L = min(probe_len, (b - a) / 3)
     for where, t in (("start", 0.0), ("mid", (b - a - L) / 2), ("end", b - a - L)):
         al, ac = audio_lag_ms(out_path, src_path, t, a + t, L)
-        vl, vc = video_lag_ms(out_path, src_path, t, a + t, L, fps)
+        if vgeom:
+            vl, vc = video_lag_vertical_ms(out_path, src_path, t, a + t, L, fps, vgeom)
+        else:
+            vl, vc = video_lag_ms(out_path, src_path, t, a + t, L, fps)
         res["probes"].append({"where": where, "t_out": round(t, 3), "audio_lag_ms": round(al, 1), "audio_corr": round(ac, 3),
                               "video_lag_ms": round(vl, 1), "video_corr": round(vc, 3), "av_offset_ms": round(vl - al, 1)})
     rel = [p for p in res["probes"] if p["audio_corr"] > 0.5 and p["video_corr"] > 0.3]

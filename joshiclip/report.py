@@ -24,7 +24,7 @@ def build(A: dict, cands: list[dict], sel: dict, cfg, renders: dict) -> dict:
                        "hook_types": c["hook_types"], "reasons": c["reasons"], "cluster": c["cluster"],
                        "peak_t": c["peak_t"], "peak_type": c["peak_type"],
                        "first5s": first5, "first5s_roman": hinglish.romanize(first5),
-                       "checks": renders.get(cid, {}).get("checks")})
+                       "checks": renders.get(cid, {}).get("checks"), "render": renders.get(cid, {}).get("vertical")})
     rej = {}
     for c in cands:
         if c["reject"]:
@@ -71,6 +71,14 @@ def write(rep: dict, out_dir: Path, timings: dict) -> None:
               f"{_fmt_t(s['peak_t']) if s['peak_t'] is not None else '-'} ({s['peak_type']}), hook types: {', '.join(s['hook_types']) or '-'}",
               f"- top reasons: " + "; ".join(s["reasons"]),
               f"- first 5 s: {s['first5s_roman']}", f"- first 5 s (Devanagari): {s['first5s']}"]
+        vr = s.get("render")
+        if vr:
+            au, gr = vr["audio"], vr["grade"]
+            L.append(f"- audio: {au['lufs']} LUFS, true peak {au['true_peak_dbtp']} dBTP, speech-to-background "
+                     f"{au['sbr_source_db']} -> {au['sbr_output_db']} dB")
+            L.append(f"- grade after/target: " + ", ".join(f"{k} {gr['after'][k]:.1f}/{gr['target'][k]:.1f}{'' if gr['within_10pct'][k] else ' (!)'}"
+                                                          for k in gr["reference"]))
+            L.append(f"- camera: faces in {vr['camera']['face_frames']:.0%} of frames, max zoom {vr['camera']['zoom_max']:.3f}")
         ch = s.get("checks")
         if ch:
             L.append(f"- checks: fps {ch['out_fps']:.0f}/{ch['expected_fps']} · frames {ch['frames']}/{ch['expected_frames']} · "

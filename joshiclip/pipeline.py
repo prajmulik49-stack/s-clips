@@ -221,7 +221,7 @@ def _debug_labels(c: dict, span) -> str:
 
 
 def run(cfg: Config, target, latest=False, vid=None, mode="draft", max_shorts=None, export_candidates=False,
-        preview_debug=False, render=True, log=print) -> int:
+        preview_debug=False, render=True, plain=False, log=print) -> int:
     from . import cut, media, report, sync
     A = analyze(cfg, target, latest, vid, log)
     C = A["cache"]
@@ -241,13 +241,19 @@ def run(cfg: Config, target, latest=False, vid=None, mode="draft", max_shorts=No
             span = cut.snap(c["start"], c["end"], fps)
             out = out_dir / (f"debug_short_{k:02d}.mp4" if preview_debug else f"short_{k:02d}.mp4")
             t = time.perf_counter()
-            vf = _debug_labels(c, span) if preview_debug else ""
-            media.run(cut.cut_plain(norm, span, out, preset, h, cfg["render"]["x264_threads"], vf))
+            vrep = None
+            if cfg["layout"]["vertical"] and not preview_debug and not plain:
+                from . import vertical
+                vrep = vertical.render(A, c, out, cfg, mode, log)
+            else:
+                vf = _debug_labels(c, span) if preview_debug else ""
+                media.run(cut.cut_plain(norm, span, out, preset, h, cfg["render"]["x264_threads"], vf))
             C.timings[f"render_short_{k:02d}"] = round(time.perf_counter() - t, 1)
             t = time.perf_counter()
-            ch = sync.check_render(out, norm, (span.start, span.end), fps, cfg["sync"]["probe_len_s"], cfg["sync"]["max_av_offset_ms"])
+            vg = vrep.pop("_vgeom", None) if vrep else None
+            ch = sync.check_render(out, norm, (span.start, span.end), fps, cfg["sync"]["probe_len_s"], cfg["sync"]["max_av_offset_ms"], vg)
             C.timings[f"check_short_{k:02d}"] = round(time.perf_counter() - t, 1)
-            renders[cid] = {"checks": ch}
+            renders[cid] = {"checks": ch, "vertical": vrep}
             log(f"  short_{k:02d} {span.start:.2f}-{span.end:.2f}s  {c['title']}  sync {'OK' if ch['ok'] else 'FAIL'} "
                 f"(A/V {ch['max_abs_av_offset_ms']} ms, frames {ch['frames']}/{ch['expected_frames']})")
     if export_candidates:

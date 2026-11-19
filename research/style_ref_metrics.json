@@ -1,0 +1,21 @@
+{
+ "source": "reference/style_ref_02_user.png (user screenshot, 'Zinda Bach Gaye Vahi Kaafi Hai')",
+ "layout": {
+  "canvas_px": [
+   237,
+   355
+  ],
+  "header_frac": 0.085,
+  "video_frac": 0.823,
+  "footer_frac": 0.092,
+  "sticker_size_frac_w": 0.17,
+  "sticker_center_y_frac_video": 0.11
+ },
+ "video_area": {
+  "L_p5": 1.18,
+  "L_p50": 46.67,
+  "L_p95": 95.69,
+  "local_contrast": 9.97,
+  "chroma_mid": 32.94
+ }
+}
