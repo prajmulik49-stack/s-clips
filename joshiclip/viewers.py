@@ -54,8 +54,19 @@ def fetch(cfg, url: str, wd: Path, log=print) -> Path | None:
             return p
     if not v.get("allow_network", True):
         return None
-    from . import ingest, tools
+    from . import ingest, tools, ytapi
     n = int(v.get("max_comments", 600))
+    t = time.perf_counter()
+    vid = ingest.video_id_for(url)
+    cs = ytapi.comments(vid, n)                      # API first: ~6 quota units, no yt-dlp request
+    if cs is not None:
+        meta = (ytapi.videos([vid]) or {}).get(vid, {})
+        p.write_text(json.dumps({"url": url, "fetched": int(time.time()), "duration": meta.get("duration"),
+                                 "view_count": meta.get("views"), "title": meta.get("title"),
+                                 "upload_date": (meta.get("published") or "")[:10].replace("-", ""),
+                                 "comments": cs, "source": "api"}, ensure_ascii=False), encoding="utf-8")
+        log(f"    {len(cs)} top comments in {time.perf_counter() - t:.0f}s (YouTube API)")
+        return p
     args = ingest.ytdlp_base(cfg) + ["--dump-json", "--skip-download", "--write-comments", "--extractor-args",
                                      f"youtube:max_comments={n},all,0,0;comment_sort=top", url]
     t = time.perf_counter()

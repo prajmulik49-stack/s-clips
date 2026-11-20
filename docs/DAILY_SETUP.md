@@ -83,6 +83,7 @@ git push -u origin main
 | `YT_B_CLIENT_ID` | channel B client id |
 | `YT_B_CLIENT_SECRET` | channel B client secret |
 | `YT_B_REFRESH_TOKEN` | channel B refresh token |
+| `YOUTUBE_API_KEY` | API key (Credentials → Create credentials → API key, restricted to YouTube Data API v3). Used for vlog lists, view counts and fan comments, so yt-dlp only downloads (fewer bot checks). It can't download videos: the API has no endpoint for that. |
 | `YTDLP_COOKIES` *(optional)* | contents of a `cookies.txt` exported from a browser logged into a **spare** Google account (not a channel owner) |
 
 Secrets stay hidden even in a public repo: they never show in logs, and fork pull requests can't read them.

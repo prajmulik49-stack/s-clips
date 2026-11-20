@@ -47,6 +47,10 @@ def list_vlogs(cfg: Config, n: int) -> list[dict]:
     import subprocess
     from . import ingest, tools
     cid = cfg["channel"]["official_id"]
+    from . import ytapi
+    items = ytapi.playlist(f"UULF{cid[2:]}", n)      # API first (1 unit / 50 vlogs); yt-dlp only as a fallback
+    if items:
+        return [{"vid": x["vid"], "title": x["title"]} for x in items]
     r = subprocess.run(ingest.ytdlp_base(cfg) + ["--flat-playlist", "--playlist-end", str(n), "--print", "%(id)s\t%(title)s",
                                                  f"https://www.youtube.com/playlist?list=UULF{cid[2:]}"],
                        capture_output=True, text=True, encoding="utf-8", errors="replace", env=tools.child_env())

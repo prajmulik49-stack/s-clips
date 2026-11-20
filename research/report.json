@@ -1,64 +1,64 @@
 {
  "category_lift": {
-  "danger_loss_fear": 0.644,
-  "drama_relationship": 0.829,
-  "family_home": 1.684,
-  "festival_emotional": 0.716,
-  "funny_accident": 0.709,
-  "money_numbers": 0.756,
-  "montage": 0.969
+  "danger_loss_fear": 0.645,
+  "drama_relationship": 0.822,
+  "family_home": 1.668,
+  "festival_emotional": 0.71,
+  "funny_accident": 0.706,
+  "money_numbers": 0.751,
+  "montage": 0.963
  },
- "category_lift_as_of": "2026-11-20T06:02:39.202614+00:00",
+ "category_lift_as_of": "2026-11-20T06:45:25.002680+00:00",
  "category_lift_detail": {
   "dance": {
    "fan_1": {
-    "lift": 1.276,
+    "lift": 1.262,
     "n": 2
    }
   },
   "danger_loss_fear": {
    "fan_1": {
-    "lift": 0.44,
+    "lift": 0.438,
     "n": 18
    },
    "official_shorts": {
-    "lift": 0.848,
+    "lift": 0.852,
     "n": 13
    }
   },
   "drama_relationship": {
    "fan_1": {
-    "lift": 0.829,
+    "lift": 0.822,
     "n": 27
    },
    "official_shorts": {
-    "lift": 0.874,
+    "lift": 0.875,
     "n": 4
    }
   },
   "family_home": {
    "fan_1": {
-    "lift": 2.164,
+    "lift": 2.138,
     "n": 84
    },
    "official_shorts": {
-    "lift": 1.205,
+    "lift": 1.198,
     "n": 22
    }
   },
   "festival_emotional": {
    "fan_1": {
-    "lift": 0.716,
+    "lift": 0.71,
     "n": 28
    },
    "official_shorts": {
-    "lift": 0.252,
+    "lift": 0.258,
     "n": 1
    }
   },
   "funny_accident": {
    "fan_1": {
-    "lift": 0.742,
+    "lift": 0.738,
     "n": 57
    },
    "official_shorts": {
@@ -68,35 +68,35 @@
   },
   "money_numbers": {
    "fan_1": {
-    "lift": 1.135,
+    "lift": 1.124,
     "n": 11
    },
    "official_shorts": {
-    "lift": 0.377,
+    "lift": 0.378,
     "n": 10
    }
   },
   "montage": {
    "fan_1": {
-    "lift": 0.865,
-    "n": 171
+    "lift": 0.858,
+    "n": 169
    },
    "official_shorts": {
-    "lift": 1.073,
+    "lift": 1.069,
     "n": 321
    }
   },
   "travel_scenery": {
    "fan_1": {
-    "lift": 3.004,
+    "lift": 2.965,
     "n": 4
    },
    "official_shorts": {
-    "lift": 0.623,
+    "lift": 0.621,
     "n": 4
    }
   }
  },
- "category_lift_n": 802,
+ "category_lift_n": 800,
  "schema": 1
 }

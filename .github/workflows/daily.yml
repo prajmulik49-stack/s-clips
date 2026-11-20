@@ -1,6 +1,6 @@
 # Daily Shorts: plan once (shared, so no scene repeats across channels) -> each channel renders + uploads in parallel.
 # Channels come from config.yaml daily.channels. Secrets per channel: <env>_CLIENT_ID, <env>_CLIENT_SECRET,
-# <env>_REFRESH_TOKEN (e.g. YT_A_...). Optional secret YTDLP_COOKIES. Optional variable RUNNER = "self-hosted"
+# <env>_REFRESH_TOKEN (e.g. YT_A_...), YOUTUBE_API_KEY. Optional secret YTDLP_COOKIES. Optional variable RUNNER = "self-hosted"
 # (private repos only!). Long-term: see docs/DAILY_SETUP.md "Running for years".
 name: daily-shorts
 
@@ -29,6 +29,8 @@ jobs:
   plan:
     runs-on: ${{ vars.RUNNER || 'windows-latest' }}
     timeout-minutes: 170
+    env:
+      YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}   # listings + comments via the API (fewer yt-dlp bot checks)
     outputs:
       date: ${{ steps.plan.outputs.date }}
       channels: ${{ steps.plan.outputs.channels }}
@@ -90,6 +92,8 @@ jobs:
     if: ${{ !inputs.dry_run }}
     runs-on: ${{ vars.RUNNER || 'windows-latest' }}
     timeout-minutes: 340
+    env:
+      YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
     strategy:
       fail-fast: false
       matrix:

@@ -67,6 +67,10 @@ def ytdlp_update(cfg: Config, log=print) -> None:
 def latest_long_video(cfg: Config, channel_id: str | None = None) -> str:
     cid = channel_id or cfg["channel"]["official_id"]
     pl = "UULF" + cid[2:]
+    from . import ytapi
+    items = ytapi.playlist(pl, 1)                    # API first: no yt-dlp request -> no bot-check budget used
+    if items:
+        return items[0]["vid"]
     r = media.run(ytdlp_base(cfg) + ["--flat-playlist", "--playlist-end", "1", "--print", "id",
                                      f"https://www.youtube.com/playlist?list={pl}"], text=True)
     return r.stdout.split()[0]

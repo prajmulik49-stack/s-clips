@@ -316,6 +316,24 @@ def write_outputs(cfg, catalog, report, log=print):
     return catalog_path, report_path
 
 
+def _api_rows(url, limit):
+    """Shorts of a channel (or a UUSH playlist) via the Data API, shaped like yt-dlp flat rows."""
+    from . import ytapi
+    import re as _re
+    m = _re.search(r"list=(UUSH[\w-]+)", url)
+    pl = m.group(1) if m else None
+    if not pl:
+        cid = ytapi.channel_id(url)
+        if not cid:
+            return None
+        pl = "UUSH" + cid[2:]
+    items = ytapi.playlist(pl, limit)
+    if not items:
+        return None
+    stats = ytapi.videos([x["vid"] for x in items]) or {}
+    return [{"id": x["vid"], "title": x["title"], "view_count": (stats.get(x["vid"]) or {}).get("views")} for x in items]
+
+
 def quick(cfg, limit=400, log=print):
     """Flat listings only (title + view count, ~1 min): median-views lift per category -> research/report.json
     `category_lift`, which moment_first uses as its "what kind of moment performs" prior. Shorts tabs list newest
@@ -325,8 +343,8 @@ def quick(cfg, limit=400, log=print):
         if source["role"] == "vlog":
             continue
         log(f"  quick catalog {source['channel']}")
-        rows = None
-        for attempt in range(3):                       # network blips ("getaddrinfo failed") -> retry, then skip
+        rows = _api_rows(source["url"], limit)       # API first; yt-dlp only when there is no key / it fails
+        for attempt in range(0 if rows is not None else 3):                       # network blips ("getaddrinfo failed") -> retry, then skip
             try:
                 rows = _yt_json(cfg, source["url"], flat=True, playlist_end=limit)
                 break
