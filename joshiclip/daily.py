@@ -1,0 +1,252 @@
+"""Daily posting: N Shorts per channel per day, 2-3 from the newest vlog, the rest from older vlogs, and no scene is
+ever posted twice (any channel, any day).
+
+  joshiclip daily plan                    pick today's scenes for every channel -> state/plans/<date>.json
+  joshiclip daily post --channel NAME     render that channel's scenes from the plan, upload, record in state/
+  joshiclip daily run                     plan + post every channel (one machine)
+  add --dry-run to `plan` / `run` to only print the plan; --no-upload to render without uploading
+"""
+from __future__ import annotations
+
+import copy
+import datetime as dt
+import hashlib
+import json
+import os
+import random
+import time
+from pathlib import Path
+
+from . import ledger
+from .config import Config, ROOT
+
+
+def _today(d: dict) -> dt.datetime:
+    return dt.datetime.now(dt.timezone(dt.timedelta(minutes=int(d.get("utc_offset_min", 330)))))
+
+
+def _push(cfg: Config) -> bool:
+    return bool(cfg["daily"].get("git_push")) or os.environ.get("GITHUB_ACTIONS") == "true"
+
+
+def prepare_cfg(cfg: Config) -> Config:
+    """Settings for daily runs: more moments per vlog, CI-only overrides on GitHub-hosted runners."""
+    c = copy.deepcopy(cfg)
+    d = c["daily"]
+    c["engine"]["max_shorts"] = int(d.get("max_moments_per_vlog", 20))
+    c["engine"]["min_shorts"] = 1
+    c["download"]["update_first"] = True
+    if os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted":
+        for sec, vals in (d.get("ci_overrides") or {}).items():
+            c[sec] = dict(c.get(sec, {}), **vals)
+    return c
+
+
+def list_vlogs(cfg: Config, n: int) -> list[dict]:
+    """Newest first: the official channel's long videos (UULF playlist = no Shorts, no lives)."""
+    import subprocess
+    from . import ingest, tools
+    cid = cfg["channel"]["official_id"]
+    r = subprocess.run(ingest.ytdlp_base(cfg) + ["--flat-playlist", "--playlist-end", str(n), "--print", "%(id)s\t%(title)s",
+                                                 f"https://www.youtube.com/playlist?list=UULF{cid[2:]}"],
+                       capture_output=True, text=True, encoding="utf-8", errors="replace", env=tools.child_env())
+    if r.returncode:
+        raise RuntimeError("listing vlogs failed: " + (r.stderr or "")[-600:])
+    out = []
+    for line in r.stdout.splitlines():
+        if "\t" in line:
+            vid, title = line.split("\t", 1)
+            out.append({"vid": vid.strip(), "title": title.strip()})
+    return out
+
+
+def moments(cfg: Config, vid: str, used: dict, log=print) -> list[dict]:
+    """This vlog's planned moments (best first) that overlap nothing already used."""
+    from . import pipeline
+    A = pipeline.analyze(cfg, vid, False, vid, log, fast=True)
+    cards, sel = pipeline.plan(cfg, A, cfg["engine"]["max_shorts"])
+    out = []
+    for i in sel["winners"]:
+        c = cards[i]
+        if not ledger.overlaps(used, vid, c["start"], c["end"]):
+            out.append({"vid": vid, "cand": c["id"], "start": c["start"], "end": c["end"], "final": c["final"],
+                        "title": c["title"], "title_source": c.get("title_source"), "viewer_score": c.get("viewer_score")})
+    out.sort(key=lambda m: (-m["final"], m["start"]))
+    return out
+
+
+def assign(ms: list[dict], need: dict[str, int], cap: int | None = None) -> dict[str, list[dict]]:
+    """Deal moments best-first round-robin to the channels that still need some (fair quality split)."""
+    got = {ch: [] for ch in need}
+    order = [ch for ch in need]
+    k = 0
+    for m in ms:
+        if cap is not None and sum(len(v) for v in got.values()) >= cap:
+            break
+        open_ = [ch for ch in order if len(got[ch]) < need[ch]]
+        if not open_:
+            break
+        ch = open_[k % len(open_)]
+        got[ch].append(m)
+        k += 1
+    return got
+
+
+def plan_day(cfg: Config, dry_run: bool = False, log=print, replan: bool = False) -> dict:
+    cfg = prepare_cfg(cfg)
+    d = cfg["daily"]
+    now = _today(d)
+    date = now.date().isoformat()
+    if ledger.plan_path(date).exists() and not (replan or dry_run):     # a re-run continues today's plan
+        log(f"[daily plan {date}] reusing {ledger.plan_path(date)}")
+        return json.loads(ledger.plan_path(date).read_text(encoding="utf-8"))
+    rng = random.Random(int(hashlib.sha256(date.encode()).hexdigest()[:12], 16))
+    chans = [c["name"] for c in d["channels"]]
+    lo, hi = d.get("latest_per_channel", [2, 3])
+    want_latest = {ch: rng.randint(int(lo), int(hi)) for ch in chans}
+    per = int(d.get("per_channel", 10))
+    used = ledger.used_spans(date, int(d.get("reserve_days", 2)))
+    titles = sorted(ledger.used_titles())
+    cfg["_used_titles"] = titles
+    exh = ledger.exhausted()
+    vlogs = list_vlogs(cfg, int(d.get("vlog_pool", 200)))
+    if not vlogs:
+        raise RuntimeError("could not list the channel's vlogs")
+    log(f"[daily plan {date}] {len(vlogs)} vlogs in the pool; latest {vlogs[0]['vid']} {vlogs[0]['title']}")
+    plan = {"date": date, "channels": {ch: [] for ch in chans}, "used_titles": titles,
+            "max_moments_per_vlog": cfg["engine"]["max_shorts"], "vlog_titles": {}}
+    deadline = time.time() + 60 * float(d.get("plan_max_minutes", 150))
+    touched = []
+
+    def take(v, need, cap=None, label=""):
+        ms = moments(cfg, v["vid"], used, log)
+        if not ms:
+            if v is not vlogs[0]:
+                touched.append(ledger.mark_exhausted(v["vid"], date))
+            log(f"  {v['vid']}: no unused moments left")
+            return
+        got = assign(ms, need, cap)
+        for ch, items in got.items():
+            for it in items:
+                it["latest"] = v is vlogs[0]
+                plan["channels"][ch].append(it)
+                used.setdefault(it["vid"], []).append((it["start"], it["end"]))
+        plan["vlog_titles"][v["vid"]] = v["title"]
+        log(f"  {v['vid']} {label}: " + ", ".join(f"{ch} +{len(x)}" for ch, x in got.items()))
+
+    take(vlogs[0], want_latest, label="(latest)")
+    cap = int(d.get("max_per_old_vlog", 4))
+    for v in vlogs[1:]:
+        need = {ch: per - len(plan["channels"][ch]) for ch in chans}
+        if all(n <= 0 for n in need.values()):
+            break
+        if v["vid"] in exh:
+            continue
+        if time.time() > deadline:
+            log("  plan time budget used up; posting what is planned")
+            break
+        try:
+            take(v, {ch: n for ch, n in need.items() if n > 0}, cap)
+        except Exception as e:  # noqa: BLE001 - one broken vlog (private, no audio, ...) must not stop the day
+            log(f"  {v['vid']}: skipped ({type(e).__name__}: {str(e)[:160]})")
+    for ch in chans:
+        log(f"  {ch}: {len(plan['channels'][ch])} Shorts "
+            f"({sum(1 for x in plan['channels'][ch] if x['latest'])} from the latest vlog)")
+    if not dry_run:
+        touched.append(ledger.save_plan(plan))
+        ledger.git_commit(touched, f"daily plan {date}", _push(cfg), log)
+    return plan
+
+
+def _slot(d: dict, ch_index: int, k: int, now: dt.datetime) -> str | None:
+    """k-th publish time of the day for this channel (ISO UTC). Past slots roll to tomorrow."""
+    if not d.get("schedule", True):
+        return None
+    times = d.get("publish_times") or []
+    if not times:
+        return None
+    hh, mm = map(int, times[k % len(times)].split(":"))
+    off = (d.get("channel_offset_min") or [0])[ch_index % len(d.get("channel_offset_min") or [0])]
+    t = now.replace(hour=hh, minute=mm, second=0, microsecond=0) + dt.timedelta(minutes=off)
+    if t < now + dt.timedelta(minutes=20):
+        t += dt.timedelta(days=1)
+    return t.astimezone(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def post(cfg: Config, channel: str, plan: dict | None = None, upload_videos: bool = True, log=print) -> int:
+    from . import fast, upload, youtube
+    cfg = prepare_cfg(cfg)
+    d = cfg["daily"]
+    now = _today(d)
+    plan = plan or json.loads(ledger.plan_path(now.date().isoformat()).read_text(encoding="utf-8"))
+    cfg["_used_titles"] = plan["used_titles"]                       # the exact settings the plan was made with
+    cfg["engine"]["max_shorts"] = plan["max_moments_per_vlog"]
+    chans = [c["name"] for c in d["channels"]]
+    ci = chans.index(channel)
+    prefix = d["channels"][ci]["env"]
+    items = plan["channels"].get(channel, [])
+    done = {(r["vid"], round(r["start"], 3)) for r in ledger.posted()}
+    items = [it for it in items if (it["vid"], round(it["start"], 3)) not in done]
+    if not items:
+        log(f"[{channel}] nothing left to post")
+        return 0
+    svc = None
+    if upload_videos:
+        if not youtube.have_secrets(prefix):
+            raise RuntimeError(f"{channel}: secrets {prefix}_CLIENT_ID / _CLIENT_SECRET / _REFRESH_TOKEN are not set")
+        svc = youtube.service(prefix)
+        log(f"[{channel}] uploading as YouTube channel: {youtube.channel_name(svc)}")
+    deadline = time.time() + 60 * float(d.get("post_max_minutes", 300))
+    k_slot = len([r for r in ledger.posted() if r["channel"] == channel and r.get("plan_date") == plan["date"]])
+    n_ok, bad = 0, 0
+    by_vid: dict[str, list[dict]] = {}
+    for it in items:
+        by_vid.setdefault(it["vid"], []).append(it)
+    # latest vlog first (gets the first publish slots), then older ones in plan order
+    for vid in sorted(by_vid, key=lambda v: (not by_vid[v][0].get("latest"), list(by_vid).index(v))):
+        if time.time() > deadline:
+            log(f"[{channel}] time budget used up; the rest stays for a later run")
+            break
+        group = by_vid[vid]
+        od = cfg.path("out") / "daily" / plan["date"] / channel / vid
+        try:
+            fast.run_fast(cfg, vid, False, vid, "final", cfg["engine"]["max_shorts"], log,
+                          pick=[it["cand"] for it in group], out_dir=od)
+        except Exception as e:  # noqa: BLE001
+            log(f"[{channel}] {vid}: render failed ({type(e).__name__}: {str(e)[:300]})"); bad += len(group); continue
+        rep = json.loads((od / "report.json").read_text(encoding="utf-8"))
+        packs = {p["file"]: p for p in upload.build(rep, cfg, plan.get("vlog_titles", {}).get(vid))}
+        for s in sorted(rep["shorts"], key=lambda s: (-s["final"], s["start"])):
+            if not (s.get("checks") or {}).get("ok"):
+                log(f"[{channel}] {s['file']}: sync check failed -> not uploaded"); bad += 1; continue
+            p = packs[s["file"]]
+            rec = {"channel": channel, "vid": vid, "start": s["start"], "end": s["end"], "title": s["title"],
+                   "plan_date": plan["date"], "file": s["file"]}
+            if svc is None:
+                log(f"[{channel}] rendered (not uploaded): {od / s['file']}"); n_ok += 1; continue
+            when = _slot(d, ci, k_slot, now)
+            try:
+                yid = youtube.upload(svc, od / s["file"], p["title"], p["description"], p["hashtags"],
+                                     str(d.get("category_id", "24")), when, d.get("privacy", "public"), log)
+            except youtube.QuotaExceeded as e:
+                log(f"[{channel}] YouTube quota reached ({e}); stopping for today"); return 1 if n_ok == 0 else 0
+            rec.update(yt_id=yid, publish_at=when, uploaded=dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"))
+            ledger.git_commit([ledger.record_post(channel, rec)], f"{channel}: posted {yid}", _push(cfg), log)
+            log(f"[{channel}] uploaded https://youtu.be/{yid}  {p['title']}  (publish {when or 'now'})")
+            k_slot += 1; n_ok += 1
+    log(f"[{channel}] done: {n_ok} posted, {bad} failed")
+    return 0 if n_ok else 1
+
+
+def run(cfg: Config, dry_run: bool = False, upload_videos: bool = True, log=print, replan: bool = False) -> int:
+    plan = plan_day(cfg, dry_run, log, replan)
+    if dry_run:
+        for ch, items in plan["channels"].items():
+            log(f"\n{ch}:")
+            for it in items:
+                log(f"  {'L' if it['latest'] else ' '} {it['vid']} {it['start']:8.2f}-{it['end']:8.2f}  {it['final']:.3f}  {it['title']}")
+        return 0
+    rc = 0
+    for ch in plan["channels"]:
+        rc |= post(cfg, ch, plan, upload_videos, log)
+    return rc

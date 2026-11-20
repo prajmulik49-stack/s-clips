@@ -159,7 +159,9 @@ def video_offset(clip: Path, proxy: Path, off_audio: float, fps: int) -> tuple[f
     return off_audio + lag / fps, c
 
 
-def run_fast(cfg: Config, target, latest=False, vid=None, mode="final", max_shorts=None, log=print) -> int:
+def run_fast(cfg: Config, target, latest=False, vid=None, mode="final", max_shorts=None, log=print,
+             pick: list[int] | None = None, out_dir: Path | None = None) -> int:
+    """pick: render only these candidate ids (daily scheduler); out_dir: where the Shorts + report go."""
     from . import pipeline, report, sync, vertical, voice
     T0 = time.perf_counter()
     cfg = copy.deepcopy(cfg)
@@ -171,9 +173,14 @@ def run_fast(cfg: Config, target, latest=False, vid=None, mode="final", max_shor
     C = A["cache"]
     t_an = time.perf_counter() - T0
     cands, sel = pipeline.plan(cfg, A, max_shorts)
+    if pick is not None:
+        missing = [i for i in pick if i not in sel["winners"]]
+        if missing:
+            raise RuntimeError(f"plan changed since it was scheduled: candidates {missing} are no longer winners")
+        sel = dict(sel, winners=list(pick))
     vid = A["vid"]
     url = A["meta"]["source"]
-    out_dir = cfg.path("out") / f"{vid}-fast"
+    out_dir = Path(out_dir) if out_dir else cfg.path("out") / f"{vid}-fast"
     out_dir.mkdir(parents=True, exist_ok=True)
     _acquire_lock(out_dir)
     wins = [cands[i] for i in sel["winners"]]
@@ -225,7 +232,7 @@ def run_fast(cfg: Config, target, latest=False, vid=None, mode="final", max_shor
     # 5. every Short renders in its OWN process (no shared GIL): voice -> frames -> sync check -> result.json
     t = time.perf_counter()
     from .config import stable_hash
-    cfg_key = stable_hash({k: cfg[k] for k in ("voice", "jumpcuts", "layout", "look", "look_tune", "camera", "render")})
+    cfg_key = stable_hash({k: cfg.get(k) for k in ("voice", "music", "jumpcuts", "layout", "look", "look_tune", "camera", "render")})
     jobs = []
     for k, c in enumerate(wins, 1):
         jd = out_dir / f"short_{k:02d}"
@@ -265,6 +272,8 @@ def run_fast(cfg: Config, target, latest=False, vid=None, mode="final", max_shor
     rep = report.build(A, cands, sel, cfg, renders)
     rep["mode"] = "fast"
     report.write(rep, out_dir, C.timings)
+    from . import upload, viewers
+    log(f"  upload pack: {upload.write(rep, cfg, out_dir, A['meta'].get('title') or viewers.vlog_title(A['workdir']))}")
     log(f"  done in {C.timings['TOTAL'] / 60:.1f} min -> {out_dir}")
     return 0 if all(r["checks"]["ok"] for r in renders.values()) else 1
 
@@ -315,8 +324,9 @@ def render_one(cfg: Config, A: dict, c: dict, k: int, s: dict, out_dir: Path, mo
             return r
     t0 = time.perf_counter()
     segs, _ = vertical.segments_for(A, c, cfg, s["off"], s["fps"])
+    vc = voice_cfg(cfg, A["vid"], c["start"])
     key = stable_hash({"clip": Path(s["path"]).name, "off": round(s["off"], 5), "segs": [[x.fa, x.fb] for x in segs],
-                       "voice": cfg["voice"], "jc": cfg["jumpcuts"]})
+                       "voice": vc, "jc": cfg["jumpcuts"]})
     vj = d / "voice.json"
     vrep_audio = None
     if vj.exists() and (d / "voice.wav").exists():
@@ -325,7 +335,7 @@ def render_one(cfg: Config, A: dict, c: dict, k: int, s: dict, out_dir: Path, mo
             vrep_audio = meta["rep"]
     if vrep_audio is None:
         voice.extract_segments(Path(s["path"]), segs, d / "src.wav", cfg["jumpcuts"].get("fade_ms", 0))
-        vrep_audio = voice.process(d / "src.wav", d / "voice.wav", cfg["voice"], log)
+        vrep_audio = voice.process(d / "src.wav", d / "voice.wav", vc, log)
         vj.write_text(json.dumps({"key": key, "rep": vrep_audio}), encoding="utf-8")
     vrep = vertical.render(A, c, out, cfg, mode, log, src=s, voice_wav=d / "voice.wav", voice_rep=vrep_audio)
     vg = vrep.pop("_vgeom", None)
@@ -339,12 +349,18 @@ def render_one(cfg: Config, A: dict, c: dict, k: int, s: dict, out_dir: Path, mo
     return r
 
 
+def voice_cfg(cfg: Config, vid: str, start: float) -> dict:
+    """Voice settings + the music bed config + a per-Short seed (same Short -> same track and start point)."""
+    return dict(cfg["voice"], music=cfg.get("music"), music_seed=f"{vid}:{start:.3f}")
+
+
 def _worker(job_path: str) -> int:
     from . import pipeline
     from .config import Config
     job = json.loads(Path(job_path).read_text(encoding="utf-8"))
     cfg = Config(job["cfg"])
     cfg["download"] = dict(cfg["download"], update_first=False)
+    cfg["viewers"] = dict(cfg.get("viewers", {}), allow_network=False)   # reuse the parent's comments.json
     A = pipeline.analyze(cfg, job["vid"], False, job["vid"], lambda *a: None, fast=True)
     cands, sel = pipeline.plan(cfg, A, job["max_shorts"])
     c = cands[job["cand"]]
@@ -379,7 +395,7 @@ def reaudio(cfg: Config, vid: str, log=print) -> int:
             continue
         mp4 = mp4s[0]
         new = d / "voice_new.wav"
-        rep = voice.process(d / "src.wav", new, vc, log)
+        rep = voice.process(d / "src.wav", new, dict(voice_cfg(cfg, vid, r["start"]), separator=vc["separator"]), log)
         if sf.info(str(new)).frames != sf.info(str(d / "src.wav")).frames:
             raise RuntimeError(f"{d.name}: audio length changed - refusing to remux")
         tmp = mp4.with_suffix(".tmp.mp4")

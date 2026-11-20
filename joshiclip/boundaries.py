@@ -19,8 +19,11 @@ import numpy as np
 
 from .text import hinglish, lex
 
-EMOJIS = {"funny_accident": "😂🤣", "danger_loss_fear": "😱😢", "festival_emotional": "🥺❤️", "drama_relationship": "😤😳",
-          "dance": "💃🔥", "money_numbers": "💰😳", "travel_scenery": "😍🌄", "food": "😋"}
+# Measured on 800 Shorts (2026-11-20): ❤️ titles 2.2x median views (official), 🥺/😥/😭 2.0x (fan channel), 😱 1.2x both;
+# 😂 0.7-0.9x. Two emojis, like the best-performing fan titles.
+EMOJIS = {"family_home": "🥺😥", "funny_accident": "😜😂", "danger_loss_fear": "😱😱", "festival_emotional": "❤️🥺",
+          "drama_relationship": "😲😥", "dance": "🤩💃", "money_numbers": "😱😱", "travel_scenery": "😍❤️",
+          "everyday": "😄😄", "food": "😋"}
 
 
 def _quiet_point(rms10: np.ndarray, a: float, b: float, default: float) -> float:
@@ -141,7 +144,9 @@ TEMPLATES = {"danger_loss_fear": ["Itna Darr Laga Sabko", "Bach Gaye Aaj Toh", "
              "travel_scenery": ["Ye Jagah Toh Dekho", "Kya View Hai Yaar", "Aisi Jagah Pehli Baar Dekhi"],
              "festival_emotional": ["Ye Pal Kabhi Nahi Bhoolenge", "Dil Khush Ho Gaya"],
              "drama_relationship": ["Ab Kya Hoga", "Ye Toh Hona Hi Tha"], "dance": ["Kya Dance Kiya", "Sab Nachne Lage"],
-             "money_numbers": ["Itna Mehenga", "Paise Hi Paise"]}
+             "money_numbers": ["Itna Mehenga", "Paise Hi Paise"],
+             "family_home": ["Ghar Mein Ye Roz Hota Hai", "Mummy Ne Sach Bol Diya", "Ghar Ka Mahaul Dekho"],
+             "everyday": ["Ye Dekho Zara", "Aaj Toh Maza Aa Gaya"]}
 
 
 def _is_question(text_rom: str, raw: str) -> bool:
@@ -177,25 +182,31 @@ def question_title(A: dict, card: dict, max_chars: int = 38) -> str | None:
     if not best:
         return None
     names = {lex.key_word(n): n for n in (lex.lexicon().get("names") or [])}
-    out = [names.get(lex.key_word(w.strip("?")), w[:1].upper() + w[1:].lower()) for w in best.split()]
+    out = [names[k] + ("?" if w.endswith("?") else "") if (k := lex.key_word(w.strip("?"))) in names
+           else w[:1].upper() + w[1:].lower() for w in best.split()]   # "...Nana?" kept its "?" only for non-names
     return " ".join(out) + " " + EMOJIS.get(card.get("category"), "😱😂")
 
 
+def _has_name(title: str) -> bool:
+    names = {lex.key_word(n) for n in (lex.lexicon().get("names") or [])}
+    return any(lex.key_word(w) in names for w in re.findall(r"[A-Za-z]+", title))
+
+
 def make_title(A: dict, card: dict, used: set | None = None) -> tuple[str, str]:
-    """Priority: a question asked in the clip -> the clearest real line -> a fixed template by moment type.
-    `used` titles are skipped so one video never repeats a title."""
+    """Priority: a line that names a person (question first) -> any question -> the clearest real line -> template.
+    Data (800 Shorts): titles built around a person ("Avantika Kabhi Bhi Khaana Nhi Bnati", "Benny ko dant diya")
+    beat bare curiosity lines ("Ye kya ho gaya": 0.7-0.85x median views). `used` titles are skipped."""
     used = used if used is not None else set()
-    for fn, src in ((question_title, "question"), (quote_title, "quote")):
-        q = fn(A, card)
-        if q and q not in used:
-            return q, src
-    cat = card.get("category") or "funny_accident"
+    found = [(q, src) for fn, src in ((question_title, "question"), (quote_title, "quote")) if (q := fn(A, card)) and q not in used]
+    for q, src in sorted(found, key=lambda x: not _has_name(x[0])):     # stable: named first, question before quote
+        return q, src
+    cat = card.get("category") or "everyday"
     pool = TEMPLATES.get(cat, ["Ye Dekho"]) + [x for k in sorted(TEMPLATES) if k != cat for x in TEMPLATES[k]]
     for tpl in pool:
-        t = f"{tpl} {EMOJIS.get(cat, '😂🤣')}"
+        t = f"{tpl} {EMOJIS.get(cat, '😄😄')}"
         if t not in used:
             return t, "template"
-    return f"{pool[0]} {EMOJIS.get(cat, '😂🤣')}", "template"
+    return f"{pool[0]} {EMOJIS.get(cat, '😄😄')}", "template"
 
 
 def shout_strength(A: dict, card: dict) -> float:

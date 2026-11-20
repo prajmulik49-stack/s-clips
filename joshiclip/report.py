@@ -22,7 +22,8 @@ def build(A: dict, cands: list[dict], sel: dict, cfg, renders: dict) -> dict:
                        "dur": c["dur"], "tag": c["tag"], "title": c["title"], "picked_by": c["picked_by"],
                        "final": c["final"], "hook_score": c["hook_score"], "story_score": c["story_score"],
                        "hook_types": c["hook_types"], "reasons": c["reasons"], "cluster": c["cluster"],
-                       "peak_t": c["peak_t"], "peak_type": c["peak_type"],
+                       "peak_t": c["peak_t"], "peak_type": c["peak_type"], "title_source": c.get("title_source"),
+                       "viewer_score": c.get("viewer_score"),
                        "first5s": first5, "first5s_roman": hinglish.romanize(first5),
                        "checks": renders.get(cid, {}).get("checks"), "render": renders.get(cid, {}).get("vertical")})
     rej = {}
@@ -70,6 +71,7 @@ def write(rep: dict, out_dir: Path, timings: dict) -> None:
               f"- span {_fmt_t(s['start'])}–{_fmt_t(s['end'])} ({s['dur']:.1f}s), cluster `{s['cluster']}`, peak "
               f"{_fmt_t(s['peak_t']) if s['peak_t'] is not None else '-'} ({s['peak_type']}), hook types: {', '.join(s['hook_types']) or '-'}",
               f"- top reasons: " + "; ".join(s["reasons"]),
+              f"- title from: {s.get('title_source') or '-'} · viewer score {s.get('viewer_score') or 0:.2f}",
               f"- first 5 s: {s['first5s_roman']}", f"- first 5 s (Devanagari): {s['first5s']}"]
         vr = s.get("render")
         if vr:

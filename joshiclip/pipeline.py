@@ -200,6 +200,10 @@ def analyze(cfg: Config, target: str | None, latest: bool = False, vid: str | No
 
     comments = None
     cpath = wd / "comments_per_sec.npy"
+    if cfg.get("viewers", {}).get("enabled", False):
+        from . import viewers
+        url = meta.get("source") if fast else (f"https://www.youtube.com/watch?v={vid}" if re.fullmatch(r"[A-Za-z0-9_-]{11}", vid) else None)
+        viewers.build(cfg, url, wd, dur, log)
     if cpath.exists():
         comments = np.load(cpath)
     pk, _ = C.run("peaks", 1, {"ps": C.keys["per_second"], "al": C.keys["align"], "p": cfg["peaks"], "lex": lex_h,
@@ -295,5 +299,8 @@ def run(cfg: Config, target, latest=False, vid=None, mode="draft", max_shorts=No
     rep = report.build(A, cands, sel, cfg, renders)
     report.write(rep, out_dir, C.timings)
     log(f"  report: {out_dir / 'report.md'}")
+    from . import upload
+    from .viewers import vlog_title
+    log(f"  upload pack: {upload.write(rep, cfg, out_dir, A['meta'].get('title') or vlog_title(A['workdir']))}")
     bad = [r for r in renders.values() if not r["checks"]["ok"]]
     return 1 if bad else 0

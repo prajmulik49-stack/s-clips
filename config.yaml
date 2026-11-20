@@ -41,7 +41,8 @@ research:
     dance: [dance, naach, nach, thumka, song, gaana]
     funny_accident: [funny, comedy, hasi, hahaha, gir, gira, palat, bheeg, splash, accident]
     money_numbers: [rupee, rs, lakh, crore, paisa, price, bill, number]
-    danger_loss_fear: [bach gaye, danger, darr, dar, kho, loss, gaya, gayi, chot, takra, accident]
+    family_home: [saas, sasur, bahu, amma, mummy, papa, dadi, nani, khana, khaana, rasoi, kitchen, cooking, ghar]
+    danger_loss_fear: [bach gaye, danger, darr, dar lag, dara diya, loss, chot, takra, police]   # "gaya/gayi/kho" matched every title
     travel_scenery: [trip, travel, vacation, pahad, mountain, beach, flight, hotel, road]
     montage: [moments, memories, best, highlights, vlog, family]
 
@@ -70,8 +71,28 @@ engine:
   story_max_s: 50
   incident_min_s: 8
   incident_max_s: 30
+  max_overlap_frac: 0.0                  # two Shorts never share footage (they were back to back at 16:46)
   montage_enabled: true
   montage_piece_s: [2, 4]
+
+viewers:                                 # fans' "2:40 piyush 😂😂" timestamps in the vlog's top comments (joshiclip/viewers.py)
+  enabled: true
+  allow_network: true
+  max_comments: 600                      # ~30 s via yt-dlp; on 4H_oOhnN6Dc: 198 timestamps
+  refresh_hours: 12                      # comments keep arriving after upload; refetch when the cache is older
+  timeout_s: 240
+  min_t_s: 20                            # "0:04 first comment" spam lives in the first seconds
+  hotspot_min_comments: 3                # >= 3 different comments within +-6 s ...
+  hotspot_min_weight: 5.0                # ... and enough likes -> its own Short candidate
+  weight: 0.8                            # ranking boost for the moment viewers pointed at most (0..1 score)
+  titles: true                           # header title = most-liked clean viewer line about the clip, if any
+  title_min_likes: 3
+
+upload:                                  # out/<vid>/upload.md: YouTube title / description / hashtags per Short
+  channel_hashtags: ["#shorts", "#youtubeshorts", "#souravjoshivlogs"]   # same set the 2x-median fan channel uses
+  title_suffix: ""                       # e.g. "| Sourav Joshi Vlogs"
+  credit_line: "Credit: Sourav Joshi Vlogs (original video linked above)"
+  max_hashtags: 6
 
 download:
   update_first: true                     # yt-dlp -U before every download session
@@ -303,6 +324,37 @@ voice:
   duck_release_ms: 300
   target_lufs: -14
   true_peak_db: -1.0
+
+daily:                                   # `joshiclip daily run|plan|post` (joshiclip/daily.py) + .github/workflows/daily.yml
+  channels:                              # name -> GitHub secrets <env>_CLIENT_ID / _CLIENT_SECRET / _REFRESH_TOKEN
+    - {name: channel_a, env: YT_A}       # secrets YT_A_CLIENT_ID / YT_A_CLIENT_SECRET / YT_A_REFRESH_TOKEN
+    # - {name: channel_b, env: YT_B}     # 2nd channel: uncomment + `joshiclip auth --prefix YT_B` (own Google Cloud project)
+  per_channel: 6                         # free API quota = 10,000 units/day = 6 uploads (1,600 each) per Cloud project
+  latest_per_channel: [2, 3]             # this many from the newest vlog (2 or 3, random per day)
+  max_per_old_vlog: 4                    # older vlogs: at most this many scenes per vlog per day (all channels)
+  vlog_pool: 200                         # how far back "older vlogs" go
+  max_moments_per_vlog: 20
+  reserve_days: 2                        # a planned scene stays blocked this long even if its upload failed
+  utc_offset_min: 330                    # IST
+  schedule: true                         # upload as private + publishAt at these IST times
+  publish_times: ["08:00", "11:00", "13:30", "17:00", "19:30", "21:30"]   # IST; evening slots = peak Indian Shorts traffic
+  channel_offset_min: [0, 40]            # channel_b posts 40 min after channel_a
+  privacy: public                        # used when schedule is false
+  category_id: "24"                      # Entertainment
+  plan_max_minutes: 150
+  post_max_minutes: 290
+  git_push: false                        # commit + push state/ after every upload (always on inside GitHub Actions)
+  ci_overrides:                          # GitHub-hosted runner: 4 vCPU / 16 GB
+    fast: {parallel_renders: 2, frame_workers: 2, x264_threads: 2}
+
+music:                                   # background music bed (joshiclip/music.py); drop tracks into music/
+  enabled: true                          # no files in music/ -> no music, nothing else changes
+  folder: music
+  gap_db: -18                            # music this far below the Short's loudness when nobody talks ...
+  speech_db: -26                         # ... and this far below it while someone speaks (voice stays clear)
+  highpass_hz: 120
+  lowpass_hz: 12000
+  voice_band_cut_db: -5                  # wide dip at 2.5 kHz so the music never masks words
 
 fast:                                    # `joshiclip run --fast`: 360p analysis + 4K only for the winning spans
   source: auto                           # auto (YouTube, falls back to a local normalized copy) | youtube | local

@@ -1,0 +1,102 @@
+{
+ "category_lift": {
+  "danger_loss_fear": 0.643,
+  "drama_relationship": 0.835,
+  "family_home": 1.688,
+  "festival_emotional": 0.722,
+  "funny_accident": 0.755,
+  "money_numbers": 0.759,
+  "montage": 0.966
+ },
+ "category_lift_as_of": "2026-11-20T05:56:48.405551+00:00",
+ "category_lift_detail": {
+  "dance": {
+   "fan_1": {
+    "lift": 1.286,
+    "n": 2
+   }
+  },
+  "danger_loss_fear": {
+   "fan_1": {
+    "lift": 0.443,
+    "n": 18
+   },
+   "official_shorts": {
+    "lift": 0.842,
+    "n": 13
+   }
+  },
+  "drama_relationship": {
+   "fan_1": {
+    "lift": 0.835,
+    "n": 27
+   },
+   "official_shorts": {
+    "lift": 1.197,
+    "n": 3
+   }
+  },
+  "family_home": {
+   "fan_1": {
+    "lift": 2.179,
+    "n": 84
+   },
+   "official_shorts": {
+    "lift": 1.197,
+    "n": 22
+   }
+  },
+  "festival_emotional": {
+   "fan_1": {
+    "lift": 0.722,
+    "n": 28
+   },
+   "official_shorts": {
+    "lift": 0.25,
+    "n": 1
+   }
+  },
+  "funny_accident": {
+   "fan_1": {
+    "lift": 0.747,
+    "n": 57
+   },
+   "official_shorts": {
+    "lift": 0.763,
+    "n": 23
+   }
+  },
+  "money_numbers": {
+   "fan_1": {
+    "lift": 1.143,
+    "n": 11
+   },
+   "official_shorts": {
+    "lift": 0.375,
+    "n": 10
+   }
+  },
+  "montage": {
+   "fan_1": {
+    "lift": 0.872,
+    "n": 171
+   },
+   "official_shorts": {
+    "lift": 1.059,
+    "n": 324
+   }
+  },
+  "travel_scenery": {
+   "fan_1": {
+    "lift": 3.026,
+    "n": 4
+   },
+   "official_shorts": {
+    "lift": 0.618,
+    "n": 4
+   }
+  }
+ },
+ "category_lift_n": 802,
+ "schema": 1
+}

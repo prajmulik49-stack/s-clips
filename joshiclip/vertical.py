@@ -90,7 +90,8 @@ def render(A: dict, c: dict, out: Path, cfg, mode: str, log=print, src: dict | N
     else:
         src_wav, voc_wav = tmp / "src.wav", tmp / "voice.wav"
         voice.extract_segments(norm, segs, src_wav, cfg["jumpcuts"].get("fade_ms", 0))
-        rep["audio"] = voice.process(src_wav, voc_wav, cfg["voice"], log)
+        rep["audio"] = voice.process(src_wav, voc_wav, dict(cfg["voice"], music=cfg.get("music"),
+                                                            music_seed=f"{A['vid']}:{c['start']:.3f}"), log)
     T["voice"] = round(time.perf_counter() - t, 1)
 
     # ---- camera

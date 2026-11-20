@@ -156,7 +156,11 @@ def ytdlp_opts() -> dict:
 def ytdlp_args() -> list[str]:
     """Same, for the yt-dlp CLI."""
     ff = ffmpeg()
-    return ["--ffmpeg-location", os.path.dirname(ff.path)] if ff.path else []
+    a = ["--ffmpeg-location", os.path.dirname(ff.path)] if ff.path else []
+    ck = os.environ.get("JOSHICLIP_YTDLP_COOKIES")          # CI: YouTube asks datacenter IPs to "sign in"
+    if ck and os.path.isfile(ck):
+        a += ["--cookies", ck]
+    return a
 
 
 def child_env() -> dict:

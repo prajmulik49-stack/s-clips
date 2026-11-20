@@ -4,7 +4,7 @@
 # so Devanagari Whisper output ("वेलकम टू माय व्लॉग") matches "welcome to my vlog".
 source: seed
 
-names: [Piyush, Mummy, Papa, Sourav, Avantika, Kunali, Sahil, Oreo, Toffee, Dada, Dadi, Nani, Nana, Bhaiya, Didi]
+names: [Piyush, Mummy, Papa, Sourav, Avantika, Kunali, Sahil, Oreo, Toffee, Dada, Dadi, Nani, Nana, Bhaiya, Didi, Amma, Benny, Chachi, Bua]
 
 intro_outro:
   - welcome to my vlog

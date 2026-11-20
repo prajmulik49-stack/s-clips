@@ -106,7 +106,7 @@ def add_space(v: np.ndarray, c: dict) -> np.ndarray:
 def speech_gate(v: np.ndarray, attack_ms: float, release_ms: float) -> np.ndarray:
     """0..1 speech-presence envelope from the clean vocal (10 ms frames), attack/release smoothed per sample."""
     hop = SR // 100
-    nf = len(v) // hop + 1
+    nf = (len(v) + hop - 1) // hop
     e = np.array([np.sqrt(np.mean(v[i * hop:(i + 1) * hop] ** 2) + 1e-12) for i in range(nf)])
     db = 20 * np.log10(e + 1e-9)
     thr = max(np.percentile(db, 60) - 12, -50)
@@ -155,6 +155,7 @@ def process(src_wav: Path, out_wav: Path, c: dict, log=print) -> dict:
         y = _ff_filter(x, eq)
         mix = np.stack([add_space(y[:, ch].copy(), c) for ch in range(y.shape[1])], 1)
         rep.update(separator="none", sbr_source_db=None, sbr_output_db=None)
+        mix = _add_music(mix, lambda: speech_gate(x.mean(1).astype(np.float32), c["duck_attack_ms"], c["duck_release_ms"]), c, rep, log)
         return _finish_loudness(mix, n, out_wav, c, rep)
     if c.get("separator", "demucs") == "dfn":
         # fast: DeepFilterNet on the mix = clean voice; background = mix - voice (ambience/music kept for ducking)
@@ -186,7 +187,21 @@ def process(src_wav: Path, out_wav: Path, c: dict, log=print) -> dict:
     mix = v[:, None] + bgd
     rep["sbr_output_db"] = round(sbr_db(v, bgd), 2)
     rep["speech_frac"] = round(float((gate > 0.5).mean()), 3)
+    mix = _add_music(mix, lambda: gate, c, rep, log)
     return _finish_loudness(mix, n, out_wav, c, rep)
+
+
+def _add_music(mix: np.ndarray, gate_fn, c: dict, rep: dict, log) -> np.ndarray:
+    """Background music bed (joshiclip/music.py) when c["music"]["enabled"]; same length, voice untouched."""
+    m = c.get("music") or {}
+    if not m.get("enabled"):
+        return mix
+    from . import music
+    if mix.ndim == 1 or mix.shape[1] == 1:
+        mix = np.repeat(mix.reshape(len(mix), 1), 2, 1)
+    out, r = music.mix(mix.astype(np.float32), gate_fn(), m, str(c.get("music_seed", "")), SR, _ff_filter, loudness, log)
+    rep.update(r)
+    return _fit(out, len(mix))
 
 
 def _finish_loudness(mix: np.ndarray, n: int, out_wav: Path, c: dict, rep: dict) -> dict:

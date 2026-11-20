@@ -1,0 +1,40 @@
+name: setup-joshiclip
+description: Python + Deno + ffmpeg + joshiclip (CPU torch) + optional yt-dlp cookies
+inputs:
+  cookies:
+    description: Netscape cookies.txt content for yt-dlp (optional)
+    required: false
+    default: ""
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v7
+      with:
+        python-version: "3.11"
+        cache: pip
+        cache-dependency-path: |
+          pyproject.toml
+          constraints.txt
+    - uses: denoland/setup-deno@v2             # JavaScript runtime yt-dlp needs to solve YouTube's player challenges
+      with:
+        deno-version: v2.x
+    - name: ffmpeg
+      shell: pwsh
+      run: |
+        if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) { choco install ffmpeg-full -y --no-progress }
+    - name: Python packages
+      shell: pwsh
+      run: |
+        python -m pip install --upgrade pip
+        pip install torch==2.6.0 torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/cpu
+        pip install -c constraints.txt -e .      # exact tested versions (see constraints.txt)
+        pip install -U yt-dlp                   # always newest: YouTube changes often
+    - name: yt-dlp cookies
+      if: ${{ inputs.cookies != '' }}
+      shell: pwsh
+      env:
+        COOKIES: ${{ inputs.cookies }}
+      run: |
+        $p = Join-Path $env:RUNNER_TEMP "yt_cookies.txt"
+        Set-Content -Path $p -Value $env:COOKIES -Encoding utf8NoBOM
+        "JOSHICLIP_YTDLP_COOKIES=$p" >> $env:GITHUB_ENV

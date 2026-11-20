@@ -315,6 +315,49 @@ def write_outputs(cfg, catalog, report, log=print):
     return catalog_path, report_path
 
 
+def quick(cfg, limit=400, log=print):
+    """Flat listings only (title + view count, ~1 min): median-views lift per category -> research/report.json
+    `category_lift`, which moment_first uses as its "what kind of moment performs" prior. Shorts tabs list newest
+    first, so each channel is compared against its own median over the same window."""
+    shorts = []
+    for source in channel_sources(cfg):
+        if source["role"] == "vlog":
+            continue
+        log(f"  quick catalog {source['channel']}")
+        for raw in _yt_json(cfg, source["url"], flat=True, playlist_end=limit):
+            if raw.get("view_count") is not None and raw.get("title"):
+                shorts.append({"id": raw.get("id"), "title": raw["title"], "views": int(raw["view_count"]),
+                               "role": source["role"], "channel": source["channel"],
+                               "category": categorize(raw["title"], cfg)})
+    shorts = list({x["id"]: x for x in shorts}.values())
+    per = collections.defaultdict(lambda: collections.defaultdict(list))
+    base = collections.defaultdict(list)
+    for x in shorts:
+        base[x["channel"]].append(x["views"])
+    for x in shorts:
+        per[x["category"]][x["channel"]].append(x["views"] / max(1, median(base[x["channel"]])))
+    lift, table = {}, {}
+    for cat, chans in per.items():
+        vals = [median(v) for v in chans.values() if len(v) >= 5]       # each channel weighs the same
+        table[cat] = {ch: {"n": len(v), "lift": round(median(v), 3)} for ch, v in chans.items()}
+        if vals:
+            lift[cat] = round(sum(vals) / len(vals), 3)
+    directory = cfg.path("research")
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / cfg["research"].get("report_file", "report.json")
+    try:
+        report = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        report = {"schema": 1}
+    report.update({"category_lift": lift, "category_lift_detail": table,
+                   "category_lift_as_of": dt.datetime.now(dt.timezone.utc).isoformat(), "category_lift_n": len(shorts)})
+    path.write_text(json.dumps(report, ensure_ascii=False, indent=1, sort_keys=True), encoding="utf-8")
+    for cat, v in sorted(lift.items(), key=lambda kv: -kv[1]):
+        log(f"  {cat:20s} {v:.2f}x median views")
+    log(f"  research (quick, {len(shorts)} Shorts): {path}")
+    return 0
+
+
 def run(cfg, limit=None, log=print):
     catalog = collect_catalog(cfg, limit, log)
     pairs = cheap_pairs(catalog, cfg)

@@ -1,0 +1,152 @@
+# Daily Shorts: plan once (shared, so no scene repeats across channels) -> each channel renders + uploads in parallel.
+# Channels come from config.yaml daily.channels. Secrets per channel: <env>_CLIENT_ID, <env>_CLIENT_SECRET,
+# <env>_REFRESH_TOKEN (e.g. YT_A_...). Optional secret YTDLP_COOKIES. Optional variable RUNNER = "self-hosted"
+# (private repos only!). Long-term: see docs/DAILY_SETUP.md "Running for years".
+name: daily-shorts
+
+on:
+  schedule:
+    - cron: "30 20 * * *"          # 02:00 IST every day (GitHub may start it a few minutes late)
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Only print the plan (no render, no upload)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: daily-shorts
+  cancel-in-progress: false
+
+permissions:
+  contents: write                   # commit state/ (what was posted) back to the repo
+
+env:
+  PYTHONUTF8: "1"
+  PYTHONIOENCODING: utf-8
+
+jobs:
+  plan:
+    runs-on: ${{ vars.RUNNER || 'windows-latest' }}
+    timeout-minutes: 170
+    outputs:
+      date: ${{ steps.plan.outputs.date }}
+      channels: ${{ steps.plan.outputs.channels }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          clean: ${{ !vars.RUNNER }}           # self-hosted: keep work/ (the analysis cache) between runs
+      - uses: ./.github/actions/setup
+        with:
+          cookies: ${{ secrets.YTDLP_COOKIES }}
+      - name: Restore analysis cache
+        if: ${{ !vars.RUNNER }}
+        uses: actions/cache/restore@v6
+        with:
+          path: work
+          key: work-${{ github.run_id }}
+          restore-keys: work-
+      - name: Plan today
+        id: plan
+        shell: pwsh
+        run: |
+          git config user.name "joshiclip-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          $ch = python -c "import json; from joshiclip import config; print(json.dumps([c['name'] for c in config.load()['daily']['channels']]))"
+          "channels=$ch" >> $env:GITHUB_OUTPUT
+          if ("${{ inputs.dry_run }}" -eq "true") { python -m joshiclip daily plan --dry-run } else { python -m joshiclip daily plan }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $d = python -c "from joshiclip import daily, config; print(daily._today(config.load()['daily']).date().isoformat())"
+          "date=$d" >> $env:GITHUB_OUTPUT
+      - name: Save analysis cache
+        if: ${{ always() && !vars.RUNNER }}
+        uses: actions/cache/save@v6
+        with:
+          path: work
+          key: work-${{ github.run_id }}
+      - name: Upload plan
+        if: ${{ !inputs.dry_run }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: plan
+          path: state/plans/${{ steps.plan.outputs.date }}.json
+      - name: Keepalive (GitHub disables schedules after 60 days without a commit)
+        if: always()
+        shell: pwsh
+        run: |
+          git pull --rebase --autostash
+          $last = [int](git log -1 --format=%ct)
+          $days = ([DateTimeOffset]::UtcNow.ToUnixTimeSeconds() - $last) / 86400
+          if ($days -gt 20) {
+            git config user.name "joshiclip-bot"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit --allow-empty -m "keepalive: no commit for $([int]$days) days"
+            git push
+          }
+          exit 0
+
+  post:
+    needs: plan
+    if: ${{ !inputs.dry_run }}
+    runs-on: ${{ vars.RUNNER || 'windows-latest' }}
+    timeout-minutes: 340
+    strategy:
+      fail-fast: false
+      matrix:
+        channel: ${{ fromJSON(needs.plan.outputs.channels) }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.ref_name }}          # latest commit: includes the plan + everything posted so far
+          clean: ${{ !vars.RUNNER }}
+      - uses: ./.github/actions/setup
+        with:
+          cookies: ${{ secrets.YTDLP_COOKIES }}
+      - name: Restore analysis cache (same as the plan used)
+        if: ${{ !vars.RUNNER }}
+        uses: actions/cache/restore@v6
+        with:
+          path: work
+          key: work-${{ github.run_id }}
+      - uses: actions/download-artifact@v8
+        with:
+          name: plan
+          path: plan
+      - name: Render + upload
+        shell: pwsh
+        env:
+          ALL_SECRETS: ${{ toJSON(secrets) }}
+        run: |
+          # export only this channel's <env>_* secrets
+          $envp = python -c "from joshiclip import config; print(next(c['env'] for c in config.load()['daily']['channels'] if c['name']=='${{ matrix.channel }}'))"
+          $s = $env:ALL_SECRETS | ConvertFrom-Json
+          foreach ($k in 'CLIENT_ID','CLIENT_SECRET','REFRESH_TOKEN') {
+            $v = $s."$($envp)_$k"
+            if ($v) { [Environment]::SetEnvironmentVariable("$($envp)_$k", $v) }
+          }
+          Remove-Item Env:ALL_SECRETS
+          git config user.name "joshiclip-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          python -m joshiclip check-auth --channel ${{ matrix.channel }}
+          if ($LASTEXITCODE -ne 0) { Write-Error "YouTube login broken - fix it before rendering (docs/DAILY_SETUP.md)"; exit 1 }
+          python -m joshiclip daily post --channel ${{ matrix.channel }} --plan plan/${{ needs.plan.outputs.date }}.json
+      - name: Push what was posted (backstop)
+        if: always()
+        shell: pwsh
+        run: |
+          git add state
+          git diff --cached --quiet
+          if ($LASTEXITCODE -ne 0) {
+            git commit -m "${{ matrix.channel }}: state after run ${{ github.run_id }}"
+            for ($i = 0; $i -lt 5; $i++) { git pull --rebase --autostash; git push; if ($LASTEXITCODE -eq 0) { break } }
+          }
+          exit 0
+      - name: Keep the reports (not the videos)
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: reports-${{ matrix.channel }}
+          path: |
+            out/daily/**/report.md
+            out/daily/**/upload.md
+          if-no-files-found: ignore

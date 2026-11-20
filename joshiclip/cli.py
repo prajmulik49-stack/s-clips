@@ -30,6 +30,7 @@ def main(argv=None) -> int:
 
     p = sub.add_parser("research", help="catalog the latest vlogs and both Shorts sources"); _common(p)
     p.add_argument("--limit", type=int, default=None, help="number of latest vlogs (default: config research.latest_vlogs)")
+    p.add_argument("--quick", action="store_true", help="titles + views only (~1 min): refresh the category priors the scorer uses")
 
     p = sub.add_parser("run", help="full pipeline"); _common(p)
     p.add_argument("target", nargs="?"); p.add_argument("--latest", action="store_true")
@@ -46,6 +47,22 @@ def main(argv=None) -> int:
     p.add_argument("video_id")
 
     p = sub.add_parser("explain"); _common(p); p.add_argument("report")
+
+    p = sub.add_parser("daily", help="plan / render / upload today's Shorts for every channel"); _common(p)
+    p.add_argument("action", choices=["plan", "post", "run"])
+    p.add_argument("--channel", default=None, help="post: channel name from config daily.channels")
+    p.add_argument("--plan", default=None, help="post: plan json (default state/plans/<today>.json)")
+    p.add_argument("--dry-run", action="store_true", help="plan only, print it, save nothing")
+    p.add_argument("--no-upload", action="store_true", help="render but do not upload")
+    p.add_argument("--replan", action="store_true", help="make a new plan even if today's exists")
+
+    p = sub.add_parser("auth", help="one-time YouTube login for a channel -> prints its GitHub secrets"); _common(p)
+    p.add_argument("client_secret", nargs="?", default=None,
+                   help="OAuth client JSON from Google Cloud (Desktop app); default: YOUTUBE_OAUTH_CLIENT_JSON in .env")
+    p.add_argument("--prefix", default="YT_A", help="secret prefix of the channel (config daily.channels env)")
+
+    p = sub.add_parser("check-auth", help="test every channel's YouTube login (fails if a token will expire)"); _common(p)
+    p.add_argument("--channel", default=None, help="only this channel (config daily.channels name)")
 
     a = ap.parse_args(argv)
     cfg = config_mod.load(a.config)
@@ -75,8 +92,8 @@ def main(argv=None) -> int:
     if a.cmd == "research":
         from .text import lex
         lex.set_lexicon(config_mod.load_lexicon(cfg))
-        from .research import run
-        return run(cfg, a.limit)
+        from .research import quick, run
+        return quick(cfg, a.limit or 400) if a.quick else run(cfg, a.limit)
     if a.cmd == "run":
         mode = "final" if a.final else "draft"
         if a.fast:
@@ -89,6 +106,25 @@ def main(argv=None) -> int:
     if a.cmd == "reaudio":
         from .fast import reaudio
         return reaudio(cfg, a.video_id)
+    if a.cmd == "daily":
+        from . import daily
+        if a.action == "plan":
+            daily.plan_day(cfg, a.dry_run, print, a.replan)
+            return 0
+        if a.action == "post":
+            import json
+            from pathlib import Path
+            if not a.channel:
+                ap.error("daily post needs --channel")
+            plan = json.loads(Path(a.plan).read_text(encoding="utf-8")) if a.plan else None
+            return daily.post(cfg, a.channel, plan, not a.no_upload)
+        return daily.run(cfg, a.dry_run, not a.no_upload, print, a.replan)
+    if a.cmd == "auth":
+        from .youtube import auth
+        return auth(a.client_secret, a.prefix)
+    if a.cmd == "check-auth":
+        from .youtube import check_all
+        return check_all(cfg, a.channel)
     if a.cmd == "explain":
         from .report import explain
         return explain(a.report)

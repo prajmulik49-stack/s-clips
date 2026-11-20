@@ -10,16 +10,30 @@ import numpy as np
 from .text import hinglish, lex
 
 CATEGORY_KEYS = {
-    "drama_relationship": ("saas", "bahu", "taunt", "gussa", "daant", "ladai", "jhagda", "rishta"),
-    "festival_emotional": ("birthday", "diwali", "holi", "rakhi", "puja", "emotional", "rona", "yaad", "miss"),
+    # Ordered by measured Shorts performance (research 2026-11-20, 800 Shorts): family / home / saas-bahu moments get
+    # 1.7x (official) and 2.3x (fan channel) the median views; funny-accident 0.76x, danger/fear 0.67-0.99x.
+    # Relationship roles + home / food words only: bare relatives ("nani", "mummy") are said all through a trip vlog
+    # and already count as the moment's "who".
+    "family_home": ("saas", "sasur", "bahu", "khana", "rasoi", "kitchen", "cooking", "roti", "sabzi", "shikayat",
+                    "naraz", "bartan", "safai"),
+    "drama_relationship": ("taunt", "gussa", "daant", "dant", "ladai", "jhagda", "rishta", "dhamki", "chidh",
+                           "sorry", "maafi", "tameez", "cheating", "dhokha"),
+    "festival_emotional": ("birthday", "diwali", "holi", "rakhi", "puja", "emotional", "rona", "yaad", "miss",
+                           "gift", "surprise", "pyaar", "love"),
     "dance": ("dance", "naach", "nach", "thumka", "gaana", "song"),
     "funny_accident": ("funny", "hasi", "hahaha", "gir", "gira", "palat", "bheeg", "splash", "accident"),
-    "money_numbers": ("rupee", "rs", "lakh", "crore", "paisa", "price", "bill"),
-    "danger_loss_fear": ("bach gaye", "danger", "darr", "dar", "kho", "gaya", "gayi", "chot", "takra"),
+    "money_numbers": ("rupee", "lakh", "crore", "paisa", "paise", "price", "bill", "mehenga"),
+    # "gaya" / "gayi" / "kho" were here and matched almost every Hindi sentence ("went") -> most moments were "danger".
+    "danger_loss_fear": ("bach gaye", "danger", "darr", "dar lag", "dara diya", "chot", "takra", "police"),
     "travel_scenery": ("trip", "travel", "vacation", "pahad", "mountain", "beach", "flight", "hotel"),
 }
-EMOJI = {"funny_accident": "😂", "danger_loss_fear": "😱", "festival_emotional": "🥺",
-         "drama_relationship": "😤", "dance": "💃", "money_numbers": "💰", "travel_scenery": "🌄"}
+EMOJI = {"family_home": "🥺", "funny_accident": "😂", "danger_loss_fear": "😱", "festival_emotional": "❤️",
+         "drama_relationship": "😥", "dance": "💃", "money_numbers": "😱", "travel_scenery": "😍", "everyday": "😄"}
+# Fallback prior (median-views lift vs channel median, mean of official + fan) used until `joshiclip research --quick`
+# writes research/report.json with fresh numbers.
+DEFAULT_CATEGORY_LIFT = {"family_home": 1.97, "travel_scenery": 1.0, "montage": 0.97, "everyday": 0.97,
+                         "dance": 1.0, "drama_relationship": 0.85, "money_numbers": 0.72, "danger_loss_fear": 0.83,
+                         "funny_accident": 0.77, "festival_emotional": 0.85}
 
 
 def _text(A, a, b):
@@ -61,7 +75,9 @@ def _category(text, peak_type):
         scores["danger_loss_fear"] += 1
     if peak_type in ("laugh",):
         scores["funny_accident"] += 1
-    return max(scores, key=lambda x: (scores[x], x)) if max(scores.values(), default=0) else "funny_accident"
+    if not max(scores.values(), default=0):
+        return "everyday"                         # was "funny_accident": every unlabelled moment got 😂 (0.7x views)
+    return max(scores, key=lambda x: (scores[x], -list(CATEGORY_KEYS).index(x)))   # ties -> better-performing category
 
 
 def _near_names(text):
@@ -74,7 +90,7 @@ def _what(text, category):
     for phrase in CATEGORY_KEYS.get(category, ()):
         if lex.phrase_in(phrase, low, 75):
             return phrase
-    words = [hinglish.romanize(x) for x in re.findall(r"[\\w]+", text)]
+    words = [hinglish.romanize(x) for x in re.findall(r"\w+", text)]   # was r"[\\w]+": matched only "\" and "w"
     stop = set(lex.lexicon().get("stopwords") or [])
     for word in words:
         if len(word) >= 4 and word.lower() not in stop:
@@ -83,25 +99,33 @@ def _what(text, category):
 
 
 def _comment_score(A, a, b):
-    comments = A.get("comments_per_sec")
-    if comments is None or np.sum(comments) <= 0:
-        return 0.0
-    x = np.asarray(comments)
-    local = float(x[int(a):max(int(a) + 1, int(np.ceil(b)))].sum() / max(1, b - a))
-    return float(np.clip(local / (np.percentile(x, 95) + 1e-9), 0, 1))
+    from . import viewers
+    return viewers.score(A, a, b)
+
+
+def category_lift(cfg) -> dict:
+    """Measured median-views lift per category (research/report.json `category_lift`, else the built-in table)."""
+    path = cfg.path("research") / cfg["research"].get("report_file", "report.json")
+    if str(path) in _LIFT_CACHE:
+        return _LIFT_CACHE[str(path)]
+    lift = dict(DEFAULT_CATEGORY_LIFT)
+    try:
+        measured = json.loads(path.read_text(encoding="utf-8")).get("category_lift") or {}
+        lift.update({k: float(v) for k, v in measured.items() if v is not None})
+    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+        pass
+    lift["everyday"] = lift.get("everyday", lift.get("montage", 1.0))
+    _LIFT_CACHE[str(path)] = lift
+    return lift
+
+
+_LIFT_CACHE: dict = {}
 
 
 def _consensus_prior(cfg, category):
-    path = cfg.path("research") / cfg["research"].get("report_file", "report.json")
-    try:
-        report = json.loads(path.read_text(encoding="utf-8"))
-        vals = []
-        for role in report.get("categories", {}).values():
-            if category in role:
-                vals.append(role[category].get("median_normalized_views", 0))
-        return float(np.clip(np.mean(vals), 0, 1)) if vals else 0.0
-    except (OSError, json.JSONDecodeError, TypeError):
-        return 0.0
+    """0..1 prior from how this kind of moment performs as a Short: 1.0x median views -> 0.5, >= 2x -> 1.0.
+    (Before: read a report.json that was never written and averaged values that are ~1 by construction.)"""
+    return float(np.clip(0.5 * category_lift(cfg).get(category, 1.0), 0, 1))
 
 
 def incident_cards(A, cfg):
@@ -160,13 +184,15 @@ def incident_cards(A, cfg):
     must = cfg["engine"].get("must_peak_strength", 3.0)
     from . import boundaries
     extra = boundaries.excited_moments(A, cfg["engine"].get("excited_min_z", 3.0))   # loud "yaar kya baat hai!" moments
+    from . import viewers
+    extra = viewers.hotspots(A, cfg) + extra             # moments fans timestamped in the comments come first
     for peak in list(A.get("peaks", [])) + extra:
         t = float(peak["t"])
-        if round(t, 3) in used or peak.get("type") not in ("scream", "laugh", "cheer", "gasp", "excited") or peak.get("strength", 0) < must:
+        if round(t, 3) in used or peak.get("type") not in ("scream", "laugh", "cheer", "gasp", "excited", "viewers") or peak.get("strength", 0) < must:
             continue
         if any(abs(t - u) < 10 for u in used):
             continue
-        if peak.get("type") != "excited" and any(e["start"] <= t <= e["end"] for e in events):
+        if peak.get("type") not in ("excited", "viewers") and any(e["start"] <= t <= e["end"] for e in events):
             continue
         used.add(round(t, 3))
         si = max(0, _sentence_index(sents, t))
@@ -192,7 +218,7 @@ def incident_cards(A, cfg):
 
 
 def _number(text):
-    m = re.search(r"(?<!\\w)(?:₹|rs\\.?\\s*)?\\d+(?:[.,]\\d+)?(?:\\s*(?:lakh|crore|rupee))?", hinglish.romanize(text).lower())
+    m = re.search(r"(?<!\w)(?:₹|rs\.?\s*)?\d+(?:[.,]\d+)?(?:\s*(?:lakh|crore|rupee))?", hinglish.romanize(text).lower())
     return m.group(0) if m else None
 
 
@@ -231,7 +257,7 @@ def select(cards, A, cfg, max_shorts=None):
             break
         if card["final"] < engine["min_score"]:
             card["reject"] = "below_min_score"; card["reject_all"].append("below_min_score"); continue
-        if any(_overlap(card, x) > 0.10 for x in chosen):
+        if any(_overlap(card, x) > engine.get("max_overlap_frac", 0.0) for x in chosen):
             skips.append({"cand": card["id"], "skip": "overlap"}); continue
         card["picked_by"] = "moment_score"
         card["tag"] = card["category"]
@@ -260,7 +286,12 @@ def refine(cards, A, cfg):
         card["reject"], card["reject_all"] = None, []               # a real line / template always exists now
         shout = boundaries.shout_strength(A, card)
         card["shout"] = shout
-        card["final"] = round(card["final"] + 0.25 * b["score"] + cfg["boundaries"].get("shout_weight", 0.6) * shout, 6)
+        from . import viewers
+        card["viewer_score"] = round(viewers.score(A, b["start"], b["end"]), 4)
+        card["final"] = round(card["final"] + 0.25 * b["score"] + cfg["boundaries"].get("shout_weight", 0.6) * shout
+                              + cfg.get("viewers", {}).get("weight", 0.0) * card["viewer_score"], 6)
+        if card["viewer_score"] >= 0.3:
+            card["reasons"] = [f"viewers timestamped it ({card['viewer_score']:.2f})"] + card["reasons"][:2]
         out.append(card)
     return out
 
@@ -272,8 +303,13 @@ def plan(A, cfg, max_shorts=None):
     sel = select(cards, A, cfg, max_shorts)
     if cfg.get("boundaries", {}).get("enabled", False):     # unique titles, best Short gets first pick
         from . import boundaries
-        used = set()
+        used = set(cfg.get("_used_titles") or [])       # titles posted on earlier days are never reused
+        from . import viewers
+        v = cfg.get("viewers", {})
         for cid in sorted(sel["winners"], key=lambda i: (-cards[i]["final"], cards[i]["start"])):
-            cards[cid]["title"], cards[cid]["title_source"] = boundaries.make_title(A, cards[cid], used)
-            used.add(cards[cid]["title"])
+            c = cards[cid]
+            vt = viewers.title(A, c["start"], c["end"], used, [str(n) for n in (lex.lexicon().get("names") or [])],
+                               int(v.get("title_min_likes", 3))) if v.get("titles", False) else None
+            c["title"], c["title_source"] = (vt, "viewer_comment") if vt else boundaries.make_title(A, c, used)
+            used.add(c["title"])
     return cards, sel

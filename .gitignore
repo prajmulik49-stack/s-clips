@@ -1,9 +1,23 @@
 work/
 out/
 data/
-models/
+models/*
+!models/silero_vad.onnx
+!models/yamnet.tflite
+!models/face_detection_yunet_2023mar.onnx
+!models/blaze_face_short_range.tflite
 __pycache__/
 *.pyc
 .pytest_cache/
 *.egg-info/
 *.log
+cookies*.txt
+client_secret*.json
+*.token.json
+
+# secrets: never commit
+.env
+.env.*
+*.env
+.env_*
+.history/
