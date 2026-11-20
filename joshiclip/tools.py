@@ -164,6 +164,9 @@ def ytdlp_args() -> list[str]:
         local = Path(__file__).resolve().parents[1] / "cookies.txt"                       # git-ignored
         ck = str(local) if local.is_file() else None
     browser = os.environ.get("JOSHICLIP_YTDLP_BROWSER") or env.get("JOSHICLIP_YTDLP_BROWSER")   # e.g. firefox
+    proxy = os.environ.get("JOSHICLIP_YTDLP_PROXY") or env.get("JOSHICLIP_YTDLP_PROXY")   # e.g. socks5://100.x.y.z:1080
+    if proxy:
+        a += ["--proxy", proxy]          # GitHub-hosted runners: download through a non-datacenter IP
     if ck and os.path.isfile(ck):
         a += ["--cookies", ck]
     elif browser and _browser_ready(browser):

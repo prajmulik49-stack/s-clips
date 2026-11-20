@@ -31,6 +31,7 @@ jobs:
     timeout-minutes: 170
     env:
       YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}   # listings + comments via the API (fewer yt-dlp bot checks)
+      JOSHICLIP_YTDLP_PROXY: ${{ secrets.YTDLP_PROXY }}  # optional: download via a non-datacenter IP
     outputs:
       date: ${{ steps.plan.outputs.date }}
       channels: ${{ steps.plan.outputs.channels }}
@@ -94,6 +95,7 @@ jobs:
     timeout-minutes: 340
     env:
       YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+      JOSHICLIP_YTDLP_PROXY: ${{ secrets.YTDLP_PROXY }}
     strategy:
       fail-fast: false
       matrix:
