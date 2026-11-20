@@ -11,6 +11,7 @@ from __future__ import annotations
 import functools
 import glob
 import os
+from pathlib import Path
 import re
 import shutil
 import subprocess
@@ -157,10 +158,31 @@ def ytdlp_args() -> list[str]:
     """Same, for the yt-dlp CLI."""
     ff = ffmpeg()
     a = ["--ffmpeg-location", os.path.dirname(ff.path)] if ff.path else []
-    ck = os.environ.get("JOSHICLIP_YTDLP_COOKIES")          # CI: YouTube asks datacenter IPs to "sign in"
+    env = _dotenv()
+    ck = os.environ.get("JOSHICLIP_YTDLP_COOKIES") or env.get("JOSHICLIP_YTDLP_COOKIES")   # CI: datacenter IPs
+    if not ck:
+        local = Path(__file__).resolve().parents[1] / "cookies.txt"                       # git-ignored
+        ck = str(local) if local.is_file() else None
+    browser = os.environ.get("JOSHICLIP_YTDLP_BROWSER") or env.get("JOSHICLIP_YTDLP_BROWSER")   # e.g. firefox
     if ck and os.path.isfile(ck):
         a += ["--cookies", ck]
+    elif browser:
+        a += ["--cookies-from-browser", browser]
     return a
+
+
+def _dotenv() -> dict:
+    """Project .env (local runs only; real environment variables win)."""
+    p = Path(__file__).resolve().parents[1] / ".env"
+    out = {}
+    try:
+        for line in p.read_text(encoding="utf-8").splitlines():
+            if "=" in line and not line.lstrip().startswith("#"):
+                k, v = line.split("=", 1)
+                out[k.strip()] = v.strip().strip('"').strip("'")
+    except OSError:
+        pass
+    return out
 
 
 def child_env() -> dict:

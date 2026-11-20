@@ -25,8 +25,26 @@ from .config import Config
 FAST_VERSION = 1
 
 
-def _ytdlp(cfg: Config, args: list[str]) -> None:
-    media.run(ingest.ytdlp_base(cfg) + args)
+BOT_CHECK = ("confirm you", "not a bot", "HTTP Error 429", "rate-limit")
+
+
+def _ytdlp(cfg: Config, args: list[str], waits=(90, 300)) -> None:
+    """YouTube's "Sign in to confirm you're not a bot" after many requests is usually a temporary rate limit:
+    wait and retry (90 s, then 5 min) before giving up with instructions."""
+    for k in range(len(waits) + 1):
+        try:
+            media.run(ingest.ytdlp_base(cfg) + args)
+            return
+        except RuntimeError as e:
+            if not any(x in str(e) for x in BOT_CHECK):
+                raise
+            if k == len(waits):
+                raise RuntimeError(
+                    "YouTube is bot-checking this connection (too many requests). Wait 1-2 hours, or give yt-dlp "
+                    "cookies: put cookies.txt in the project folder, or set JOSHICLIP_YTDLP_BROWSER=firefox in .env "
+                    "(see docs/DAILY_SETUP.md).\n" + str(e)[-600:]) from None
+            print(f"    YouTube bot check; waiting {waits[k]} s and retrying ({k + 1}/{len(waits)})", flush=True)
+            time.sleep(waits[k])
 
 
 def ingest_lite(cfg: Config, target, latest, vid, log=print):
