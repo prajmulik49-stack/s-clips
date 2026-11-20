@@ -6,6 +6,7 @@ import datetime as dt
 import json
 import re
 import subprocess
+import time
 from pathlib import Path
 from statistics import median
 
@@ -319,17 +320,32 @@ def quick(cfg, limit=400, log=print):
     """Flat listings only (title + view count, ~1 min): median-views lift per category -> research/report.json
     `category_lift`, which moment_first uses as its "what kind of moment performs" prior. Shorts tabs list newest
     first, so each channel is compared against its own median over the same window."""
-    shorts = []
+    shorts, failed = [], []
     for source in channel_sources(cfg):
         if source["role"] == "vlog":
             continue
         log(f"  quick catalog {source['channel']}")
-        for raw in _yt_json(cfg, source["url"], flat=True, playlist_end=limit):
+        rows = None
+        for attempt in range(3):                       # network blips ("getaddrinfo failed") -> retry, then skip
+            try:
+                rows = _yt_json(cfg, source["url"], flat=True, playlist_end=limit)
+                break
+            except RuntimeError as exc:
+                log(f"    attempt {attempt + 1} failed: {str(exc).splitlines()[-1][:160]}")
+                time.sleep(10 * (attempt + 1))
+        if rows is None:
+            log(f"    skipped {source['channel']} (no connection); its old numbers stay")
+            failed.append(source["channel"])
+            continue
+        for raw in rows:
             if raw.get("view_count") is not None and raw.get("title"):
                 shorts.append({"id": raw.get("id"), "title": raw["title"], "views": int(raw["view_count"]),
                                "role": source["role"], "channel": source["channel"],
                                "category": categorize(raw["title"], cfg)})
     shorts = list({x["id"]: x for x in shorts}.values())
+    if failed:                                      # half the data would skew the priors -> keep the old report
+        log(f"  research (quick): could not reach {', '.join(failed)}; report.json unchanged. Check the internet and rerun.")
+        return 1
     per = collections.defaultdict(lambda: collections.defaultdict(list))
     base = collections.defaultdict(list)
     for x in shorts:
