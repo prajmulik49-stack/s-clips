@@ -166,9 +166,30 @@ def ytdlp_args() -> list[str]:
     browser = os.environ.get("JOSHICLIP_YTDLP_BROWSER") or env.get("JOSHICLIP_YTDLP_BROWSER")   # e.g. firefox
     if ck and os.path.isfile(ck):
         a += ["--cookies", ck]
-    elif browser:
+    elif browser and _browser_ready(browser):
         a += ["--cookies-from-browser", browser]
     return a
+
+
+_WARNED: set = set()
+
+
+def _browser_ready(browser: str) -> bool:
+    """Only pass --cookies-from-browser when that browser has a profile; else warn once and go on without cookies
+    (a missing Firefox profile used to crash the whole run)."""
+    b = browser.split(":")[0].lower()
+    if b != "firefox":
+        return True
+    roots = [Path(os.environ.get("APPDATA", "")) / "Mozilla/Firefox/Profiles",
+             Path(os.environ.get("LOCALAPPDATA", "")) / "Packages/Mozilla.Firefox_n80bbvh6b1yt2/LocalCache/Roaming/Mozilla/Firefox/Profiles",
+             Path.home() / ".mozilla/firefox"]
+    if any(r.is_dir() and any(r.glob("*/cookies.sqlite")) for r in roots):
+        return True
+    if b not in _WARNED:
+        _WARNED.add(b)
+        print("  WARNING: JOSHICLIP_YTDLP_BROWSER=firefox but Firefox has no profile with cookies yet: open Firefox, "
+              "log into youtube.com with a spare Google account, then run again. Continuing WITHOUT cookies.", flush=True)
+    return False
 
 
 def _dotenv() -> dict:

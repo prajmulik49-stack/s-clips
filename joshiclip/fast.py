@@ -116,12 +116,27 @@ def ingest_lite(cfg: Config, target, latest, vid, log=print):
 
 
 # ---------------------------------------------------------------- 4K clips
-def download_clip(cfg: Config, url: str, a: float, b: float, out: Path) -> Path:
+def fetch_info(cfg: Config, url: str, out_dir: Path) -> Path:
+    """ONE YouTube extraction per vlog; every clip then downloads from this file (--load-info-json).
+    Before: each of the 8 clips did its own full extraction, 3 at a time -> bursts that trip the bot check.
+    Stream URLs inside stay valid ~6 h, so the file is refreshed when older than 2 h."""
+    p = out_dir / "source.info.json"
+    if p.exists() and time.time() - p.stat().st_mtime < 2 * 3600:
+        return p
+    stem = out_dir / "source"
+    _ytdlp(cfg, ["--skip-download", "--write-info-json", "-f", cfg["fast"]["clip_format"], "-o", str(stem), url])
+    if not p.exists():
+        raise RuntimeError("yt-dlp wrote no info json")
+    return p
+
+
+def download_clip(cfg: Config, url: str, a: float, b: float, out: Path, info: Path | None = None) -> Path:
     if out.exists():
         return out
     tmp = out.with_name(out.stem + ".part" + out.suffix)
+    src = ["--load-info-json", str(info)] if info else [url]
     _ytdlp(cfg, ["-f", cfg["fast"]["clip_format"], "--download-sections", f"*{a:.3f}-{b:.3f}",
-                 "--merge-output-format", "mkv", "-o", str(tmp), url])
+                 "--merge-output-format", "mkv", "-o", str(tmp), *src])
     got = sorted(tmp.parent.glob(tmp.stem + "*"))
     got = [g for g in got if g.suffix in (".mkv", ".mp4", ".webm")]
     if not got:
@@ -211,8 +226,10 @@ def run_fast(cfg: Config, target, latest=False, vid=None, mode="final", max_shor
     local_norm = A["meta"].get("local_norm")
     with ThreadPoolExecutor(cfg["fast"]["parallel_downloads"]) as ex:
       if not local_norm:
+        info = fetch_info(cfg, url, out_dir) if any(not (out_dir / f"clip_{k:02d}.mkv").exists()
+                                                    for k in range(1, len(wins) + 1)) else None
         futs = {c["id"]: ex.submit(download_clip, cfg, url, max(0.0, c["start"] - pad), c["end"] + pad,
-                                   out_dir / f"clip_{k:02d}.mkv") for k, c in enumerate(wins, 1)}
+                                   out_dir / f"clip_{k:02d}.mkv", info) for k, c in enumerate(wins, 1)}
         for cid, fu in futs.items():
             clips[cid] = fu.result()
     C.timings["download_4k_clips"] = round(time.perf_counter() - t, 1)

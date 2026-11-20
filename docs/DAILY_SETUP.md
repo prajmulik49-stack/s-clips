@@ -154,7 +154,19 @@ YouTube treats it like a normal home connection.
 
 **Never commit `.env`.** It is git-ignored. Secrets live only in `.env` (your PC) and GitHub Actions secrets.
 
-## "Sign in to confirm you're not a bot" on your own PC
+## "Sign in to confirm you're not a bot": the permanent setup
+
+YouTube rate-limits connections that make many requests. What the tool does about it:
+1. **All lookups use the YouTube API** (vlog lists, comments, views), so yt-dlp contacts YouTube only to download.
+2. **One YouTube request per vlog:** the stream info is fetched once and every clip downloads from it
+   (`--load-info-json`). Before, 8 clips meant 8 full requests, 3 at a time.
+3. **Waits and retries** on a bot check (90 s, then 5 min).
+4. **Logged-in cookies** (below) make YouTube treat you like a normal viewer. This is the part that stops it for good.
+
+On GitHub's servers, YouTube blocks most requests no matter what. The lasting setup for the daily job is a
+**self-hosted runner on this PC** (section 6). That needs a **private** repo; runs on your own PC stay free.
+
+## Cookies on your own PC
 
 This is YouTube rate-limiting your connection after many requests. It usually clears within 1-2 hours, and the
 tool now waits and retries by itself (90 s, then 5 min). If it keeps happening, give yt-dlp cookies from a
