@@ -38,12 +38,23 @@ runs:
         if ($LASTEXITCODE -ne 0) { exit 1 }
         python -c "import yaml, numpy, cv2, mediapipe, faster_whisper, googleapiclient, playwright; print('python packages OK')"
         if ($LASTEXITCODE -ne 0) { exit 1 }
-    - name: yt-dlp cookies
+    - name: Restore the cookies yt-dlp refreshed in the last run (encrypted)
+      if: ${{ inputs.cookies != '' }}
+      uses: actions/cache/restore@v6
+      with:
+        path: .ytjar
+        key: ytjar-${{ github.run_id }}-${{ github.job }}
+        restore-keys: ytjar-
+    - name: yt-dlp cookies (refreshed copy if made from this secret, else the secret)
       if: ${{ inputs.cookies != '' }}
       shell: pwsh
       env:
-        COOKIES: ${{ inputs.cookies }}
+        YTDLP_COOKIES_SECRET: ${{ inputs.cookies }}
       run: |
         $p = Join-Path $env:RUNNER_TEMP "yt_cookies.txt"
-        Set-Content -Path $p -Value $env:COOKIES -Encoding utf8NoBOM
+        $c = Join-Path $env:GITHUB_WORKSPACE ".ytjar"
         "JOSHICLIP_YTDLP_COOKIES=$p" >> $env:GITHUB_ENV
+        "JOSHICLIP_COOKIE_CACHE=$c" >> $env:GITHUB_ENV
+        $env:JOSHICLIP_YTDLP_COOKIES = $p; $env:JOSHICLIP_COOKIE_CACHE = $c
+        python -m joshiclip.cookiejar load
+        if ($LASTEXITCODE -ne 0) { exit 1 }

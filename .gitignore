@@ -1,5 +1,6 @@
 work/
 state/_partners/
+.ytjar/
 out/
 data/
 models/*

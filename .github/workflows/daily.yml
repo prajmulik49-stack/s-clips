@@ -24,6 +24,7 @@ concurrency:
 
 permissions:
   contents: write                   # commit state/ (what was posted) back to the repo
+  issues: write                     # "Refresh YTDLP_COOKIES" issue -> GitHub emails the repo owner
 
 env:
   PYTHONUTF8: "1"
@@ -65,6 +66,28 @@ jobs:
             python -m joshiclip check-auth --channel $c
             if ($LASTEXITCODE -ne 0) { Write-Error "YouTube login for $c is broken: check this repo's YT_* secrets"; exit 1 }
           }
+      - name: Cookie check (rejected or expiring soon -> GitHub issue = email to the owner; never stops the run)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $v = python -c "from joshiclip import config, ytapi; c = config.load(); x = ytapi.playlist('UULF' + c['channel']['official_id'][2:], 1); print(x[0]['vid'] if x else 'TeCrjPZ9fds')"
+          python -m joshiclip.cookiejar check $v
+          $rc = $LASTEXITCODE
+          if ($rc -eq 2 -or $rc -eq 3) {
+            $t = if ($rc -eq 2) { "Refresh YTDLP_COOKIES: YouTube rejected them" } else { "Refresh YTDLP_COOKIES soon: they expire within 14 days" }
+            $open = gh issue list --state open --search "YTDLP_COOKIES in:title" --json number --jq length
+            if ("$open" -eq "0") {
+              $body = "The daily run found that the YouTube cookies need refreshing ($t).`n`n" +
+                "1. Chrome: Incognito window (Ctrl+Shift+N) -> youtube.com -> log in with the spare Google account -> play a video.`n" +
+                "2. Extension 'Get cookies.txt LOCALLY' -> Export.`n" +
+                "3. Close the Incognito window (do NOT log out).`n" +
+                "4. Repo Settings -> Secrets and variables -> Actions -> YTDLP_COOKIES -> Update -> paste the whole file.`n`n" +
+                "Until then downloads fall back to recording in Chrome. Close this issue after updating."
+              gh issue create --title $t --body $body
+            }
+          }
+          exit 0
       - name: Restore analysis cache
         if: ${{ !vars.RUNNER }}
         uses: actions/cache/restore@v6
@@ -92,6 +115,18 @@ jobs:
         with:
           path: work
           key: work-${{ github.run_id }}
+      - name: Keep the cookies yt-dlp refreshed (encrypted with the secret)
+        if: ${{ always() }}
+        shell: pwsh
+        env:
+          YTDLP_COOKIES_SECRET: ${{ secrets.YTDLP_COOKIES }}
+        run: python -m joshiclip.cookiejar save; exit 0
+      - name: Save refreshed cookies
+        if: ${{ always() && hashFiles('.ytjar/jar.bin') != '' }}
+        uses: actions/cache/save@v6
+        with:
+          path: .ytjar
+          key: ytjar-${{ github.run_id }}-${{ github.job }}
       - name: Upload plan
         if: ${{ !inputs.dry_run && steps.plan.outputs.channels != '[]' }}
         uses: actions/upload-artifact@v7
@@ -172,6 +207,18 @@ jobs:
             for ($i = 0; $i -lt 5; $i++) { git pull --rebase --autostash; git push; if ($LASTEXITCODE -eq 0) { break } }
           }
           exit 0
+      - name: Keep the cookies yt-dlp refreshed (encrypted with the secret)
+        if: ${{ always() }}
+        shell: pwsh
+        env:
+          YTDLP_COOKIES_SECRET: ${{ secrets.YTDLP_COOKIES }}
+        run: python -m joshiclip.cookiejar save; exit 0
+      - name: Save refreshed cookies
+        if: ${{ always() && hashFiles('.ytjar/jar.bin') != '' }}
+        uses: actions/cache/save@v6
+        with:
+          path: .ytjar
+          key: ytjar-${{ github.run_id }}-${{ github.job }}
       - name: Keep the reports (not the videos)
         if: always()
         uses: actions/upload-artifact@v7
