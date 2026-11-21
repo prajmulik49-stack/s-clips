@@ -340,8 +340,8 @@ onnx==1.22.0
 onnxruntime==1.22.0
 openai==2.52.0
 openai-whisper==20250625
-opencv-contrib-python==5.0.0.93
-opencv-python==4.13.0.92
+opencv-contrib-python==4.11.0.86
+opencv-python==4.11.0.86
 opencv-python-headless==4.11.0.86
 openpyxl==3.1.5
 openrouter==1.0

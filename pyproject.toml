@@ -5,8 +5,14 @@ description = "Deterministic, no-LLM engine: Sourav Joshi vlog -> vertical Short
 requires-python = ">=3.10"
 dependencies = ["yt-dlp", "numpy<2", "scipy", "PyYAML", "faster-whisper", "onnxruntime", "mediapipe",
   "opencv-python", "scenedetect", "librosa", "soundfile", "scikit-learn", "lightgbm", "RapidFuzz",
-  "torch", "torchaudio", "pillow", "demucs", "deepfilternet", "pyloudnorm", "rapidocr-onnxruntime", "pytest",
+  "torch", "torchaudio", "pillow", "pyloudnorm",
   "google-api-python-client", "google-auth", "google-auth-oauthlib", "playwright"]
+
+[project.optional-dependencies]
+# not needed by the daily job (voice.separator: none). deepfilternet pins packaging<24, which conflicts with the
+# rest, so it must never be a hard dependency: pip refuses the whole install.
+extras = ["demucs", "deepfilternet", "rapidocr-onnxruntime"]
+dev = ["pytest"]
 
 [project.scripts]
 joshiclip = "joshiclip.cli:main"

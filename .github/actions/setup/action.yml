@@ -25,10 +25,17 @@ runs:
     - name: Python packages
       shell: pwsh
       run: |
+        # every step must succeed: a failed install used to be ignored and the job crashed later ("No module named yaml")
         python -m pip install --upgrade pip
+        if ($LASTEXITCODE -ne 0) { exit 1 }
         pip install torch==2.6.0 torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/cpu
+        if ($LASTEXITCODE -ne 0) { exit 1 }
         pip install -c constraints.txt -e .      # exact tested versions (see constraints.txt)
+        if ($LASTEXITCODE -ne 0) { exit 1 }
         pip install -U yt-dlp                   # always newest: YouTube changes often
+        if ($LASTEXITCODE -ne 0) { exit 1 }
+        python -c "import yaml, numpy, cv2, mediapipe, faster_whisper, googleapiclient, playwright; print('python packages OK')"
+        if ($LASTEXITCODE -ne 0) { exit 1 }
     - name: yt-dlp cookies
       if: ${{ inputs.cookies != '' }}
       shell: pwsh
