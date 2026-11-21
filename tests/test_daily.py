@@ -113,3 +113,13 @@ def test_titles_hashtags_names_and_slots():
     now = dt.datetime(2026, 11, 22, 2, 0, tzinfo=dt.timezone(dt.timedelta(minutes=330)))
     assert daily._slot(d, 0, 0, now, True) == "2026-11-22T03:00:00Z"     # 08:30 IST
     assert daily._slot(d, 0, 3, now, False) == "2026-11-22T13:30:00Z"    # 19:00 IST
+
+
+def test_two_channels_never_get_the_same_scene():
+    ms = [{"final": 1 - i / 20, "vid": "v", "start": 50.0 * i, "end": 50.0 * i + 40} for i in range(10)]
+    got = daily.assign(ms, {"channel_a": 2, "channel_b": 2})
+    a = {(m["vid"], m["start"]) for m in got["channel_a"]}
+    b = {(m["vid"], m["start"]) for m in got["channel_b"]}
+    assert len(a) == 2 and len(b) == 2 and not (a & b)
+    got = daily.assign(ms, {"channel_a": 2, "channel_b": 2}, cap=4)          # one old vlog: 2 + 2
+    assert [len(got["channel_a"]), len(got["channel_b"])] == [2, 2]

@@ -368,10 +368,10 @@ voice:
 daily:                                   # `joshiclip daily run|plan|post` (joshiclip/daily.py) + .github/workflows/daily.yml
   channels:                              # name -> GitHub secrets <env>_CLIENT_ID / _CLIENT_SECRET / _REFRESH_TOKEN
     - {name: channel_a, env: YT_A}       # secrets YT_A_CLIENT_ID / YT_A_CLIENT_SECRET / YT_A_REFRESH_TOKEN
-    # - {name: channel_b, env: YT_B}     # 2nd channel: uncomment + `joshiclip auth --prefix YT_B` (own Google Cloud project)
+    - {name: channel_b, env: YT_B}       # 2nd channel (sorav9744): secrets YT_B_* from its own Google Cloud project
   per_channel: 6                         # free API quota = 10,000 units/day = 6 uploads (1,600 each) per Cloud project
   latest_per_channel: [2, 2]             # 2 from the newest vlog ...
-  max_per_old_vlog: 2                    # ... + 2 each from 2 older vlogs = 6 a day: one already analysed (cache,
+  max_per_old_vlog: 4                    # ... + 2 per channel from each of 2 older vlogs (4 per old vlog in total): one already analysed (cache,
                                          # instant) + one RANDOM old vlog from the pool (variety; recorded once)
   vlog_pool: 200                         # how far back "older vlogs" go
   max_moments_per_vlog: 20
@@ -383,7 +383,7 @@ daily:                                   # `joshiclip daily run|plan|post` (josh
   publish_latest: ["08:30", "09:00"]
   publish_old: ["07:00", "07:30", "18:00", "19:00"]
   publish_times: ["07:00", "07:30", "08:30", "09:00", "18:00", "19:00"]   # fallback when the two lists are unset
-  channel_offset_min: [0, 40]            # channel_b posts 40 min after channel_a
+  channel_offset_min: [0, 0]             # user: both channels post at the same times (always different scenes)
   privacy: public                        # used when schedule is false
   category_id: "24"                      # Entertainment
   plan_max_minutes: 35                   # whole daily run < 2 h: no new vlog is started after 35 min of planning
