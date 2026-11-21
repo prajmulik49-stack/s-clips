@@ -277,8 +277,33 @@ def post(cfg: Config, channel: str, plan: dict | None = None, upload_videos: boo
             ledger.git_commit([ledger.record_post(channel, rec)], f"{channel}: posted {yid}", _push(cfg), log)
             log(f"[{channel}] uploaded https://youtu.be/{yid}  {p['title']}  (publish {when or 'now'})")
             k_slot += 1; n_ok += 1
+            if d.get("delete_after_upload", True):
+                _delete_uploaded(od, s["file"])
+        if svc is not None and d.get("delete_after_upload", True):
+            _delete_sources(od, log)
     log(f"[{channel}] done: {n_ok} posted, {bad} failed")
     return 0 if n_ok else 1
+
+
+def _delete_uploaded(od: Path, file: str) -> None:
+    """Free the disk once YouTube has the Short: its mp4 + its work folder (short_NN/, jump-cut pieces)."""
+    import shutil
+    mp4 = od / file
+    mp4.unlink(missing_ok=True)
+    shutil.rmtree(od / mp4.stem, ignore_errors=True)
+    shutil.rmtree(od / f"short_{file[:2]}", ignore_errors=True)
+
+
+def _delete_sources(od: Path, log=print) -> None:
+    """After a vlog's uploads: the recorded / downloaded 4K clips (the largest files). report.md / upload.md stay."""
+    n = 0
+    for f in list(od.glob("clip_*")) + list(od.glob("source.info.json")):
+        try:
+            f.unlink(); n += 1
+        except OSError:
+            pass
+    if n:
+        log(f"    deleted {n} source clip files in {od}")
 
 
 def run(cfg: Config, dry_run: bool = False, upload_videos: bool = True, log=print, replan: bool = False) -> int:

@@ -343,7 +343,8 @@ daily:                                   # `joshiclip daily run|plan|post` (josh
   category_id: "24"                      # Entertainment
   plan_max_minutes: 35                   # whole daily run < 2 h: no new vlog is started after 35 min of planning
   post_max_minutes: 75
-  cache_max_gb: 6                        # work/*-fast analyses kept (GitHub cache limit is 10 GB/repo); oldest-used go first
+  delete_after_upload: true              # uploaded Shorts + their 4K source clips are deleted (only reports stay)
+  cache_max_gb: 6                       # work/*-fast analyses kept (GitHub cache limit is 10 GB/repo); oldest-used go first
   record_budget_minutes: 45              # all of today's clip recordings share this; 4K while it fits, else 1440p/1080p
   git_push: false                        # commit + push state/ after every upload (always on inside GitHub Actions)
   ci_overrides:                          # GitHub-hosted runner: 4 vCPU / 16 GB

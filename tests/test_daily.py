@@ -68,3 +68,13 @@ def test_prune_cache_drops_oldest_but_keeps_planned(tmp_path):
     gone = daily.prune_cache(cfg, keep={"old"}, max_gb=2000 / 1024 ** 3, log=lambda *a: None)
     assert gone == ["mid-fast"]                                  # oldest unplanned goes; "old" is planned today
     assert (tmp_path / "old-fast").exists() and (tmp_path / "new-fast").exists() and (tmp_path / "full").exists()
+
+
+def test_uploaded_short_and_sources_are_deleted(tmp_path):
+    for p in ["01_A.mp4", "01_A/x.mp4", "short_01/voice.wav", "02_B.mp4", "short_02/voice.wav",
+              "clip_01.mkv", "clip_02.v.ivf", "source.info.json", "report.md", "upload.md"]:
+        (tmp_path / p).parent.mkdir(parents=True, exist_ok=True); (tmp_path / p).write_text("x")
+    daily._delete_uploaded(tmp_path, "01_A.mp4")
+    daily._delete_sources(tmp_path, log=lambda *a: None)
+    left = sorted(str(p.relative_to(tmp_path)).replace("\\", "/") for p in tmp_path.rglob("*") if p.is_file())
+    assert left == ["02_B.mp4", "report.md", "short_02/voice.wav", "upload.md"]   # 02 wasn't uploaded
