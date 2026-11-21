@@ -1,0 +1,79 @@
+# Which way of getting a YouTube video works on GitHub's servers? Manual only; never part of the daily run.
+# Each method downloads 20 s of the newest vlog at <= 1080p and the summary lists OK / FAIL per method.
+name: fetch-probe
+
+on:
+  workflow_dispatch:
+    inputs:
+      video:
+        description: "YouTube video id to test with"
+        default: "TeCrjPZ9fds"
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Tools
+        shell: pwsh
+        run: |
+          python -m pip install -q -U pip yt-dlp bgutil-ytdlp-pot-provider
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) { choco install ffmpeg -y --no-progress | Out-Null }
+          python -m yt_dlp --version
+      - name: Cookies file
+        shell: pwsh
+        env:
+          COOKIES: ${{ secrets.YTDLP_COOKIES }}
+        run: |
+          $p = Join-Path $env:RUNNER_TEMP "c.txt"
+          Set-Content -Path $p -Value $env:COOKIES -Encoding utf8NoBOM
+          "CK=$p" >> $env:GITHUB_ENV
+      - name: PO token server (bgutil)
+        shell: pwsh
+        run: |
+          git clone -q --depth 1 https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git "$env:RUNNER_TEMP\bg"
+          Push-Location "$env:RUNNER_TEMP\bg\server"
+          npm ci --silent; npx tsc
+          Start-Process -FilePath node -ArgumentList "build/main.js" -WindowStyle Hidden -RedirectStandardOutput "$env:RUNNER_TEMP\bg.log" -RedirectStandardError "$env:RUNNER_TEMP\bg.err"
+          Pop-Location
+          Start-Sleep 8
+          try { (Invoke-WebRequest -UseBasicParsing http://127.0.0.1:4416/ping).Content } catch { "PO token server did not answer: $_" }
+      - name: Try every method
+        shell: pwsh
+        run: |
+          $u = "https://www.youtube.com/watch?v=${{ inputs.video }}"
+          $base = @("-m", "yt_dlp", "-f", "bv*[height<=1080]+ba/b[height<=1080]", "--download-sections", "*100-120",
+                    "--merge-output-format", "mkv", "--no-warnings", "--retries", "3", "--extractor-retries", "2")
+          $methods = [ordered]@{
+            "1 cookies"                    = @("--cookies", $env:CK, "--extractor-args", "youtubepot-bgutilhttp:disable=1")
+            "2 cookies + PO token"         = @("--cookies", $env:CK)
+            "3 PO token, no cookies"       = @()
+            "4 PO token + mweb client"     = @("--extractor-args", "youtube:player_client=mweb")
+            "5 cookies + tv client"        = @("--cookies", $env:CK, "--extractor-args", "youtube:player_client=tv")
+          }
+          $sum = @("| Method | Result |", "|---|---|")
+          foreach ($k in $methods.Keys) {
+            $o = Join-Path $env:RUNNER_TEMP ("m" + $k.Substring(0, 1) + ".mkv")
+            Write-Host "===== $k"
+            $out = & python @base @($methods[$k]) -o $o $u 2>&1 | Out-String
+            Write-Host $out
+            $f = Get-ChildItem "$o*" -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($f -and $f.Length -gt 100000) {
+              $h = & ffprobe -v error -select_streams v:0 -show_entries stream=height -of csv=p=0 $f.FullName
+              $sum += "| $k | OK: $h" + "p, $([int]($f.Length / 1MB)) MB |"
+            } else {
+              $why = ($out -split "`n" | Where-Object { $_ -match "ERROR" } | Select-Object -First 1)
+              $sum += "| $k | FAIL: $($why -replace '\|', '/') |"
+            }
+          }
+          $sum -join "`n" | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
