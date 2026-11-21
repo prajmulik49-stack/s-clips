@@ -130,7 +130,7 @@ jobs:
       - name: Render + upload
         shell: pwsh
         env:
-          # only the named secrets (never toJSON(secrets)); each repo has just its own channel's set, the other is empty
+          # only these named secrets; each repo has just its own channel's set, the other is empty
           YT_A_CLIENT_ID: ${{ secrets.YT_A_CLIENT_ID }}
           YT_A_CLIENT_SECRET: ${{ secrets.YT_A_CLIENT_SECRET }}
           YT_A_REFRESH_TOKEN: ${{ secrets.YT_A_REFRESH_TOKEN }}
