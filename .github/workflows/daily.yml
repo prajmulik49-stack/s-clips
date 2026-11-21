@@ -17,6 +17,10 @@ on:
         description: "Only print the plan (no render, no upload)"
         type: boolean
         default: false
+      test_one:
+        description: "End-to-end test: render + upload ONLY 1 Short, published immediately (+ Facebook)"
+        type: boolean
+        default: false
 
 concurrency:
   group: daily-shorts
@@ -181,6 +185,7 @@ jobs:
       - name: Render + upload
         shell: pwsh
         env:
+          JOSHICLIP_TEST_ONE: ${{ inputs.test_one && '1' || '' }}
           # only these named secrets; each repo has just its own channel's set, the other is empty
           YT_A_CLIENT_ID: ${{ secrets.YT_A_CLIENT_ID }}
           YT_A_CLIENT_SECRET: ${{ secrets.YT_A_CLIENT_SECRET }}

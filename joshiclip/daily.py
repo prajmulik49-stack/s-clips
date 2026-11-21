@@ -313,6 +313,11 @@ def post(cfg: Config, channel: str, plan: dict | None = None, upload_videos: boo
     items = plan["channels"].get(channel, [])
     done = {(r["vid"], round(r["start"], 3)) for r in ledger.posted()}
     items = [it for it in items if (it["vid"], round(it["start"], 3)) not in done]
+    if os.environ.get("JOSHICLIP_TEST_ONE"):     # end-to-end test: one Short, published right away (no schedule)
+        items = items[:1]
+        d["schedule"] = False
+        d["privacy"] = "public"
+        log(f"[{channel}] TEST: only 1 Short, published immediately")
     if _yields(d, channel) and os.environ.get("GITHUB_ACTIONS"):
         # last guard: if both repos planned at the same time anyway, the later channel gives the scene up
         sync_partners(cfg, log)
