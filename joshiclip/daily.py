@@ -332,6 +332,14 @@ def post(cfg: Config, channel: str, plan: dict | None = None, upload_videos: boo
             raise RuntimeError(f"{channel}: secrets {prefix}_CLIENT_ID / _CLIENT_SECRET / _REFRESH_TOKEN are not set")
         svc = youtube.service(prefix)
         log(f"[{channel}] uploading as YouTube channel: {youtube.channel_name(svc)}")
+    from . import facebook
+    try:
+        fb_on = svc is not None and facebook.enabled(cfg)
+    except Exception as e:  # noqa: BLE001 - never let Facebook stop YouTube
+        fb_on = False
+        log(f"[{channel}] facebook check failed ({str(e)[:120]}); YouTube only")
+    if fb_on:
+        log(f"[{channel}] also posting every Short to the Facebook Page (Reels)")
     deadline = time.time() + 60 * float(d.get("post_max_minutes", 300))
     today_posts = [r for r in ledger.posted() if r["channel"] == channel and r.get("plan_date") == plan["date"]]
     k_kind = {True: sum(1 for r in today_posts if r.get("latest")), False: sum(1 for r in today_posts if r.get("latest") is False)}
@@ -370,6 +378,12 @@ def post(cfg: Config, channel: str, plan: dict | None = None, upload_videos: boo
             except youtube.QuotaExceeded as e:
                 log(f"[{channel}] YouTube quota reached ({e}); stopping for today"); return 1 if n_ok == 0 else 0
             rec.update(yt_id=yid, publish_at=when, uploaded=dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"))
+            if fb_on:      # Facebook can never stop or undo YouTube: any error is only logged
+                try:
+                    rec["fb_id"] = facebook.post_reel(cfg, od / s["file"], facebook.caption(
+                        p["title"], p["hashtags"], cfg.get("upload", {}).get("credit_line")), when, log)
+                except Exception as e:  # noqa: BLE001
+                    log(f"[{channel}] facebook skipped for {s['file']}: {str(e)[:200]}")
             ledger.git_commit([ledger.record_post(channel, rec)], f"{channel}: posted {yid}", _push(cfg), log)
             log(f"[{channel}] uploaded https://youtu.be/{yid}  {p['title']}  (publish {when or 'now'})")
             k_kind[is_latest] += 1; n_ok += 1

@@ -399,6 +399,10 @@ daily:                                   # `joshiclip daily run|plan|post` (josh
   ci_overrides:                          # GitHub-hosted runner: 4 vCPU / 16 GB
     fast: {parallel_renders: 2, frame_workers: 2, x264_threads: 2}
 
+facebook:                                # joshiclip/facebook.py: every uploaded Short also becomes a Reel on ONE Page
+  enabled: true                          # only acts when FB_PAGE_ID + FB_PAGE_TOKEN exist; never blocks YouTube
+  graph_version: v23.0
+
 music:                                   # background music bed (joshiclip/music.py); drop tracks into music/
   enabled: true                          # no files in music/ -> no music, nothing else changes
   folder: music

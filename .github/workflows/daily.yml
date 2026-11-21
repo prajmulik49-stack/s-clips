@@ -150,6 +150,8 @@ jobs:
           YT_A_CLIENT_ID: ${{ secrets.YT_A_CLIENT_ID }}
           YT_A_CLIENT_SECRET: ${{ secrets.YT_A_CLIENT_SECRET }}
           YT_A_REFRESH_TOKEN: ${{ secrets.YT_A_REFRESH_TOKEN || secrets.YT_REFRESH_TOKEN }}   # either name works
+          FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}                # optional: same Shorts as Reels on a Facebook Page
+          FB_PAGE_TOKEN: ${{ secrets.FB_PAGE_TOKEN }}
           YT_B_CLIENT_ID: ${{ secrets.YT_B_CLIENT_ID }}
           YT_B_CLIENT_SECRET: ${{ secrets.YT_B_CLIENT_SECRET }}
           YT_B_REFRESH_TOKEN: ${{ secrets.YT_B_REFRESH_TOKEN }}

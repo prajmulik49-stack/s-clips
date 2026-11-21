@@ -61,6 +61,8 @@ def main(argv=None) -> int:
                    help="OAuth client JSON from Google Cloud (Desktop app); default: YOUTUBE_OAUTH_CLIENT_JSON in .env")
     p.add_argument("--prefix", default="YT_A", help="secret prefix of the channel (config daily.channels env)")
 
+    p = sub.add_parser("fb-token", help="one-time: FB_USER_TOKEN in .env -> never-expiring Facebook Page token"); _common(p)
+
     p = sub.add_parser("check-auth", help="test every channel's YouTube login (fails if a token will expire)"); _common(p)
     p.add_argument("--channel", default=None, help="only this channel (config daily.channels name)")
 
@@ -122,6 +124,9 @@ def main(argv=None) -> int:
     if a.cmd == "auth":
         from .youtube import auth
         return auth(a.client_secret, a.prefix)
+    if a.cmd == "fb-token":
+        from .facebook import make_page_token
+        return make_page_token(cfg)
     if a.cmd == "check-auth":
         from .youtube import check_all
         return check_all(cfg, a.channel)
