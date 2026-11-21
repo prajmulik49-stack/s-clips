@@ -26,7 +26,7 @@ jobs:
       - name: Tools
         shell: pwsh
         run: |
-          python -m pip install -q -U pip yt-dlp bgutil-ytdlp-pot-provider
+          python -m pip install -q -U pip "yt-dlp[default]" bgutil-ytdlp-pot-provider
           if ($LASTEXITCODE -ne 0) { exit 1 }
           if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) { choco install ffmpeg -y --no-progress | Out-Null }
           python -m yt_dlp --version
@@ -53,7 +53,7 @@ jobs:
         run: |
           $u = "https://www.youtube.com/watch?v=${{ inputs.video }}"
           $base = @("-m", "yt_dlp", "-f", "bv*[height<=1080]+ba/b[height<=1080]", "--download-sections", "*100-120",
-                    "--merge-output-format", "mkv", "--no-warnings", "--retries", "3", "--extractor-retries", "2")
+                    "--merge-output-format", "mkv", "--retries", "3", "--extractor-retries", "2")
           $methods = [ordered]@{
             "1 cookies"                    = @("--cookies", $env:CK, "--extractor-args", "youtubepot-bgutilhttp:disable=1")
             "2 cookies + PO token"         = @("--cookies", $env:CK)
@@ -77,3 +77,6 @@ jobs:
             }
           }
           $sum -join "`n" | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          Write-Host "===== formats seen with cookies"
+          python -m yt_dlp --cookies $env:CK -F $u 2>&1 | Select-Object -Last 40
+          Write-Host "===== PO token server log"; Get-Content (Join-Path $env:RUNNER_TEMP "bg.log"), (Join-Path $env:RUNNER_TEMP "bg.err") -ErrorAction SilentlyContinue | Select-Object -Last 15
