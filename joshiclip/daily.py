@@ -209,11 +209,14 @@ def old_vlog_order(cfg: Config, old: list[dict], exhausted, rng: random.Random) 
     return cached[:1] + fresh[:1] + cached[1:] + fresh[1:]
 
 
-def _slot(d: dict, ch_index: int, k: int, now: dt.datetime) -> str | None:
-    """k-th publish time of the day for this channel (ISO UTC). Past slots roll to tomorrow."""
+def _slot(d: dict, ch_index: int, k: int, now: dt.datetime, latest: bool | None = None) -> str | None:
+    """k-th publish time of the day for this channel (ISO UTC). Past slots roll to tomorrow. With `latest` given and
+    publish_latest / publish_old set, the newest vlog's Shorts and the old vlogs' Shorts each use their own times."""
     if not d.get("schedule", True):
         return None
     times = d.get("publish_times") or []
+    if latest is not None and d.get("publish_latest") and d.get("publish_old"):
+        times = d["publish_latest"] if latest else d["publish_old"]
     if not times:
         return None
     hh, mm = map(int, times[k % len(times)].split(":"))
@@ -252,7 +255,8 @@ def post(cfg: Config, channel: str, plan: dict | None = None, upload_videos: boo
         svc = youtube.service(prefix)
         log(f"[{channel}] uploading as YouTube channel: {youtube.channel_name(svc)}")
     deadline = time.time() + 60 * float(d.get("post_max_minutes", 300))
-    k_slot = len([r for r in ledger.posted() if r["channel"] == channel and r.get("plan_date") == plan["date"]])
+    today_posts = [r for r in ledger.posted() if r["channel"] == channel and r.get("plan_date") == plan["date"]]
+    k_kind = {True: sum(1 for r in today_posts if r.get("latest")), False: sum(1 for r in today_posts if r.get("latest") is False)}
     n_ok, bad = 0, 0
     by_vid: dict[str, list[dict]] = {}
     for it in items:
@@ -277,19 +281,20 @@ def post(cfg: Config, channel: str, plan: dict | None = None, upload_videos: boo
                 log(f"[{channel}] {s['file']}: sync check failed -> not uploaded"); bad += 1; continue
             p = packs[s["file"]]
             rec = {"channel": channel, "vid": vid, "start": s["start"], "end": s["end"], "title": s["title"],
-                   "plan_date": plan["date"], "file": s["file"]}
+                   "plan_date": plan["date"], "file": s["file"], "latest": bool(group[0].get("latest"))}
             if svc is None:
                 log(f"[{channel}] rendered (not uploaded): {od / s['file']}"); n_ok += 1; continue
-            when = _slot(d, ci, k_slot, now)
+            is_latest = bool(group[0].get("latest"))
+            when = _slot(d, ci, k_kind[is_latest], now, is_latest)
             try:
-                yid = youtube.upload(svc, od / s["file"], p["title"], p["description"], p["hashtags"],
+                yid = youtube.upload(svc, od / s["file"], p["title"], p["description"], p["hashtags"] + p.get("keywords", []),
                                      str(d.get("category_id", "24")), when, d.get("privacy", "public"), log)
             except youtube.QuotaExceeded as e:
                 log(f"[{channel}] YouTube quota reached ({e}); stopping for today"); return 1 if n_ok == 0 else 0
             rec.update(yt_id=yid, publish_at=when, uploaded=dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"))
             ledger.git_commit([ledger.record_post(channel, rec)], f"{channel}: posted {yid}", _push(cfg), log)
             log(f"[{channel}] uploaded https://youtu.be/{yid}  {p['title']}  (publish {when or 'now'})")
-            k_slot += 1; n_ok += 1
+            k_kind[is_latest] += 1; n_ok += 1
             if d.get("delete_after_upload", True):
                 _delete_uploaded(od, s["file"])
         if svc is not None and d.get("delete_after_upload", True):

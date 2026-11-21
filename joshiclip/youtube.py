@@ -95,6 +95,20 @@ def _reason(e) -> str:
         return ""
 
 
+def _fit_tags(tags: list[str], limit: int = 480) -> list[str]:
+    """YouTube's hidden tags: 500 characters in total (a tag with a space counts 2 more for its quotes)."""
+    out, n = [], 0
+    for t in tags:
+        t = t.lstrip("#").strip()
+        if not t or t in out:
+            continue
+        c = len(t) + (2 if " " in t else 0) + (1 if out else 0)
+        if n + c > limit:
+            break
+        out.append(t); n += c
+    return out
+
+
 def upload(svc, path: Path, title: str, description: str, tags: list[str], category_id: str = "24",
            publish_at: str | None = None, privacy: str = "public", log=print) -> str:
     from googleapiclient.errors import HttpError
@@ -103,7 +117,8 @@ def upload(svc, path: Path, title: str, description: str, tags: list[str], categ
               "embeddable": True}
     if publish_at:
         status["publishAt"] = publish_at
-    body = {"snippet": {"title": title[:100], "description": description[:4900], "tags": [t.lstrip("#") for t in tags][:15],
+    title, description = (x.replace("<", "").replace(">", "") for x in (title, description))   # YouTube rejects < >
+    body = {"snippet": {"title": title[:100], "description": description[:4900], "tags": _fit_tags(tags),
                         "categoryId": category_id, "defaultLanguage": "hi", "defaultAudioLanguage": "hi"},
             "status": status}
     media = MediaFileUpload(str(path), mimetype="video/mp4", chunksize=8 * 1024 * 1024, resumable=True)

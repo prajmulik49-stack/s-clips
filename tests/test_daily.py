@@ -101,3 +101,15 @@ def test_old_vlogs_one_cached_then_one_random(tmp_path):
     got = [v["vid"] for v in daily.old_vlog_order(cfg, old, {"x"}, random.Random(1))]
     assert got[0] in ("c1", "c2") and got[1] in ("n1", "n2", "n3") and "x" not in got and len(got) == 5
     assert got == [v["vid"] for v in daily.old_vlog_order(cfg, old, {"x"}, random.Random(1))]   # same day, same plan
+
+
+def test_titles_hashtags_names_and_slots():
+    import datetime as dt
+    from joshiclip import upload
+    known = ["Piyush", "Sourav", "Sahil", "Kunali", "Nana", "Nani"]
+    assert upload.fix_names("Pyuish Phone Lene Aaiga 😂", known) == "Piyush Phone Lene Aaiga 😂"
+    assert upload.fix_names("Sorav Aur Kunal Ki Nana", known) == "Sourav Aur Kunal Ki Nana"
+    d = {"schedule": True, "publish_latest": ["08:30", "09:00"], "publish_old": ["07:00", "07:30", "18:00", "19:00"]}
+    now = dt.datetime(2026, 11, 22, 2, 0, tzinfo=dt.timezone(dt.timedelta(minutes=330)))
+    assert daily._slot(d, 0, 0, now, True) == "2026-11-22T03:00:00Z"     # 08:30 IST
+    assert daily._slot(d, 0, 3, now, False) == "2026-11-22T13:30:00Z"    # 19:00 IST

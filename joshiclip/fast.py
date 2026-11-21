@@ -358,6 +358,8 @@ def run_fast(cfg: Config, target, latest=False, vid=None, mode="final", max_shor
                     f"  [{time.perf_counter() - T0:.0f}s total]")
     C.timings["voice_and_render"] = round(time.perf_counter() - t, 1)
     C.timings["TOTAL"] = round(time.perf_counter() - T0, 1)
+    for k, c in enumerate(wins, 1):          # the worker names the mp4; the parent's report must use the same name
+        c["file"] = pipeline.clip_filename(k, c["title"])
     rep = report.build(A, cands, sel, cfg, renders)
     rep["mode"] = "fast"
     report.write(rep, out_dir, C.timings)

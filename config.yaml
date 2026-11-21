@@ -91,7 +91,38 @@ viewers:                                 # fans' "2:40 piyush 😂😂" timestam
   title_min_likes: 3
 
 upload:                                  # out/<vid>/upload.md: YouTube title / description / hashtags per Short
-  channel_hashtags: ["#shorts", "#youtubeshorts", "#souravjoshivlogs"]   # same set the 2x-median fan channel uses
+  title_hashtags: ["#shorts", "#souravjoshivlogs", "#souravjoshi"]       # user: "<title> #shorts #souravjoshivlogs #souravjoshi"
+  channel_hashtags: ["#shorts", "#souravjoshivlogs", "#souravjoshi"]     # description's hashtag line (+ names / category)
+  keywords:                              # description "Keywords:" line + YouTube's hidden tags (user: 20-30)
+    - sourav joshi
+    - sourav joshi vlogs
+    - sourav joshi vlog
+    - sourav joshi new vlog
+    - sourav joshi latest vlog
+    - sourav joshi today vlog
+    - sourav joshi shorts
+    - sourav joshi family
+    - sourav joshi funny
+    - sourav joshi comedy
+    - sourav joshi daily vlog
+    - joshi family
+    - piyush joshi
+    - sahil joshi
+    - sourav joshi brother
+    - sourav joshi mummy
+    - sourav joshi papa
+    - sourav joshi dadi
+    - avantika
+    - kunali
+    - oreo toffee
+    - sourav joshi vlogs shorts
+    - souravjoshivlogs
+    - indian family vlog
+    - hindi vlog
+    - daily vlog
+    - family vlog
+    - youtube shorts
+  max_keywords: 30
   title_suffix: ""                       # e.g. "| Sourav Joshi Vlogs"
   credit_line: "Credit: Sourav Joshi Vlogs (original video linked above)"
   max_hashtags: 6
@@ -347,9 +378,11 @@ daily:                                   # `joshiclip daily run|plan|post` (josh
   reserve_days: 2                        # a planned scene stays blocked this long even if its upload failed
   utc_offset_min: 330                    # IST
   schedule: true                         # upload as private + publishAt at these IST times
-  # IST, BEST SLOT FIRST: the k-th Short posted today gets the k-th time. Shorts go out latest vlog first, best score
-  # first, so the newest vlog's 2 get the evening peak (19:30 / 21:30), the 4 old-vlog ones lunch, after-work, morning.
-  publish_times: ["19:30", "21:30", "13:30", "17:00", "11:00", "08:00"]
+  # IST. User (2026-11-21): newest vlog's 2 Shorts at 08:30 + 09:00 (after Sourav's vlog), old vlogs' 4 at
+  # 07:00, 07:30 and 18:00, 19:00. Best score gets the first time of its list.
+  publish_latest: ["08:30", "09:00"]
+  publish_old: ["07:00", "07:30", "18:00", "19:00"]
+  publish_times: ["07:00", "07:30", "08:30", "09:00", "18:00", "19:00"]   # fallback when the two lists are unset
   channel_offset_min: [0, 40]            # channel_b posts 40 min after channel_a
   privacy: public                        # used when schedule is false
   category_id: "24"                      # Entertainment
