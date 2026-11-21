@@ -534,7 +534,20 @@ def record_full(cfg, vid: str, wd: Path, log=print) -> tuple[Path, dict]:
             f"{st['ad_s']:.0f}s  sound pauses {st['seams']}")
         return st
 
-    return out, _with_routes(cfg, go, log)
+    def go_retry(br):
+        # GitHub runners sometimes stall mid-vlog (buffering); a fresh replay almost always gets through
+        tries = int(r.get("full_retries", 3))
+        for k in range(tries):
+            try:
+                return go(br)
+            except Stuck as e:
+                if k == tries - 1:
+                    raise
+                log(f"  playback stalled ({str(e)[:100]}); recording the vlog again ({k + 2}/{tries})")
+                for f in (wd / "rec_full.ivf", wd / "rec_full.webm"):
+                    f.unlink(missing_ok=True)
+
+    return out, _with_routes(cfg, go_retry, log)
 
 
 # recording cost, seconds of work per second of clip (picture + sound + seeks), learned while running. Starting
