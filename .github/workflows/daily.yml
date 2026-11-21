@@ -49,6 +49,22 @@ jobs:
       - uses: ./.github/actions/setup
         with:
           cookies: ${{ secrets.YTDLP_COOKIES }}
+      - name: YouTube login check (fails in seconds instead of after 30 min of planning)
+        shell: pwsh
+        env:
+          YT_A_CLIENT_ID: ${{ secrets.YT_A_CLIENT_ID }}
+          YT_A_CLIENT_SECRET: ${{ secrets.YT_A_CLIENT_SECRET }}
+          YT_A_REFRESH_TOKEN: ${{ secrets.YT_A_REFRESH_TOKEN || secrets.YT_REFRESH_TOKEN }}
+          YT_B_CLIENT_ID: ${{ secrets.YT_B_CLIENT_ID }}
+          YT_B_CLIENT_SECRET: ${{ secrets.YT_B_CLIENT_SECRET }}
+          YT_B_REFRESH_TOKEN: ${{ secrets.YT_B_REFRESH_TOKEN }}
+        run: |
+          $env:JOSHICLIP_SCHEDULE = "${{ github.event.schedule }}"
+          $chs = python -c "from joshiclip import config, daily; print(' '.join(daily.my_channels(config.load()['daily'])))"
+          foreach ($c in $chs.Split(' ', [StringSplitOptions]::RemoveEmptyEntries)) {
+            python -m joshiclip check-auth --channel $c
+            if ($LASTEXITCODE -ne 0) { Write-Error "YouTube login for $c is broken: check this repo's YT_* secrets"; exit 1 }
+          }
       - name: Restore analysis cache
         if: ${{ !vars.RUNNER }}
         uses: actions/cache/restore@v6
@@ -133,7 +149,7 @@ jobs:
           # only these named secrets; each repo has just its own channel's set, the other is empty
           YT_A_CLIENT_ID: ${{ secrets.YT_A_CLIENT_ID }}
           YT_A_CLIENT_SECRET: ${{ secrets.YT_A_CLIENT_SECRET }}
-          YT_A_REFRESH_TOKEN: ${{ secrets.YT_A_REFRESH_TOKEN }}
+          YT_A_REFRESH_TOKEN: ${{ secrets.YT_A_REFRESH_TOKEN || secrets.YT_REFRESH_TOKEN }}   # either name works
           YT_B_CLIENT_ID: ${{ secrets.YT_B_CLIENT_ID }}
           YT_B_CLIENT_SECRET: ${{ secrets.YT_B_CLIENT_SECRET }}
           YT_B_REFRESH_TOKEN: ${{ secrets.YT_B_REFRESH_TOKEN }}
