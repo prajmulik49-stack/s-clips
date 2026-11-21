@@ -28,9 +28,9 @@ permissions:
 env:
   PYTHONUTF8: "1"
   PYTHONIOENCODING: utf-8
-  # record = play each vlog in Chrome and record it (no yt-dlp download; GitHub IPs get bot-checked).
-  # Override with repo variable JOSHICLIP_FETCH = auto (yt-dlp first, record if it fails) or ytdlp.
-  JOSHICLIP_FETCH: ${{ vars.JOSHICLIP_FETCH || 'record' }}
+  # auto = yt-dlp with the YTDLP_COOKIES secret (fetch-probe 2026-11-21: 1080p works on GitHub runners); recording
+  # in Chrome only if yt-dlp fails. Override with repo variable JOSHICLIP_FETCH = ytdlp or record.
+  JOSHICLIP_FETCH: ${{ vars.JOSHICLIP_FETCH || 'auto' }}
 
 jobs:
   plan:

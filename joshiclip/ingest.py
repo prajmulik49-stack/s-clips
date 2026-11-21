@@ -58,7 +58,7 @@ def ytdlp_update(cfg: Config, log=print) -> None:
     r = subprocess.run([sys.executable, "-m", "yt_dlp", "-U"], capture_output=True, text=True, env=tools.child_env())
     msg = (r.stdout + r.stderr).strip().splitlines()
     if any("pip" in m.lower() for m in msg):
-        r = subprocess.run([sys.executable, "-m", "pip", "install", "-q", "-U", "yt-dlp"], capture_output=True, text=True)
+        r = subprocess.run([sys.executable, "-m", "pip", "install", "-q", "-U", "yt-dlp[default]"], capture_output=True, text=True)
         log(f"  yt-dlp updated via pip (rc={r.returncode})")
     else:
         log("  " + (msg[-1] if msg else "yt-dlp -U done"))

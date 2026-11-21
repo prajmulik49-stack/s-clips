@@ -417,7 +417,7 @@ fast:                                    # `joshiclip run --fast`: 360p analysis
   proxy_format: "134+251/bv*[height<=360][vcodec^=avc1]+ba/b[height<=360]"
   sub_langs: "hi-orig,hi"
   asr_model: large-v3-turbo              # only used when YouTube has no Hindi auto-captions
-  clip_format: "bv*[height<=2160][fps<=60]+ba/b"
+  clip_format: "bv*[height<=1080][fps<=60]+ba/b[height<=1080]"   # user: 1080p is fine (smaller, faster, less to bot-check)
   clip_pad_s: 3
   parallel_downloads: 3
   parallel_renders: 4                    # Shorts rendered at the same time (each: decoder + encoder + frame workers)

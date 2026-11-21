@@ -32,7 +32,9 @@ runs:
         if ($LASTEXITCODE -ne 0) { exit 1 }
         pip install -c constraints.txt -e .      # exact tested versions (see constraints.txt)
         if ($LASTEXITCODE -ne 0) { exit 1 }
-        pip install -U yt-dlp                   # always newest: YouTube changes often
+        # always newest (YouTube changes often); [default] adds yt-dlp's own JS challenge solver - without it
+        # YouTube offers only unusable formats ("Requested format is not available")
+        pip install -U "yt-dlp[default]"
         if ($LASTEXITCODE -ne 0) { exit 1 }
         python -c "import yaml, numpy, cv2, mediapipe, faster_whisper, googleapiclient, playwright; print('python packages OK')"
         if ($LASTEXITCODE -ne 0) { exit 1 }
