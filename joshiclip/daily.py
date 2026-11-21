@@ -29,6 +29,49 @@ def _push(cfg: Config) -> bool:
     return bool(cfg["daily"].get("git_push")) or os.environ.get("GITHUB_ACTIONS") == "true"
 
 
+def my_channels(d: dict) -> list[str]:
+    """Channels this run handles. On GitHub: those whose `repo` is this repository (one channel per repo) and,
+    on a scheduled run, whose `crons` include the cron that fired. Locally: all."""
+    repo = os.environ.get("GITHUB_REPOSITORY")
+    sched = (os.environ.get("JOSHICLIP_SCHEDULE") or "").strip()
+    out = []
+    for c in d["channels"]:
+        if repo and c.get("repo") and c["repo"].lower() != repo.lower():
+            continue
+        if sched and c.get("crons") and sched not in c["crons"]:
+            continue
+        out.append(c["name"])
+    return out
+
+
+def sync_partners(cfg: Config, log=print) -> list[str]:
+    """Fetch state/ of the OTHER channels' repos (public; shallow, state/ only) into state/_partners/ so this plan
+    never picks a scene another channel posted or planned. A repo that can't be reached is skipped with a warning."""
+    import shutil
+    import subprocess
+    repo = (os.environ.get("GITHUB_REPOSITORY") or "").lower()
+    mine = {c["name"] for c in cfg["daily"]["channels"] if (c.get("repo") or "").lower() == repo} if repo else         {c["name"] for c in cfg["daily"]["channels"]}
+    repos = sorted({c["repo"] for c in cfg["daily"]["channels"] if c.get("repo") and c["name"] not in mine})
+    got = []
+    for r in repos:
+        dst = ledger.PARTNERS / r.replace("/", "__")
+        shutil.rmtree(dst, ignore_errors=True)
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        url = f"https://github.com/{r}.git"
+        try:
+            for args in (["clone", "--depth", "1", "--filter=blob:none", "--no-checkout", "-q", url, str(dst)],
+                         ["-C", str(dst), "sparse-checkout", "set", "--no-cone", "/state/"],
+                         ["-C", str(dst), "checkout", "-q"]):
+                ssl = ["-c", "http.sslBackend=schannel"] if os.name == "nt" else []   # Windows certificate store
+                subprocess.run(["git", *ssl, *args], check=True, capture_output=True, text=True, timeout=180)
+            n = len(list((dst / "state").glob("posted_*.jsonl"))) if (dst / "state").exists() else 0
+            log(f"  partner {r}: state fetched ({n} posted files)")
+            got.append(r)
+        except Exception as e:  # noqa: BLE001
+            log(f"  WARNING partner {r}: could not fetch its state ({str(e)[:120]}); its scenes are not excluded today")
+    return got
+
+
 def prepare_cfg(cfg: Config) -> Config:
     """Settings for daily runs: more moments per vlog, CI-only overrides on GitHub-hosted runners."""
     c = copy.deepcopy(cfg)
@@ -109,7 +152,10 @@ def plan_day(cfg: Config, dry_run: bool = False, log=print, replan: bool = False
         log(f"[daily plan {date}] reusing {ledger.plan_path(date)}")
         return json.loads(ledger.plan_path(date).read_text(encoding="utf-8"))
     rng = random.Random(int(hashlib.sha256(date.encode()).hexdigest()[:12], 16))
-    chans = [c["name"] for c in d["channels"]]
+    chans = my_channels(d)
+    if not chans:
+        raise RuntimeError("no channel of config daily.channels belongs to this repo / schedule")
+    sync_partners(cfg, log)
     lo, hi = d.get("latest_per_channel", [2, 3])
     want_latest = {ch: rng.randint(int(lo), int(hi)) for ch in chans}
     per = int(d.get("per_channel", 10))

@@ -8,6 +8,9 @@ on:
   schedule:
     - cron: "30 20 * * *"          # 02:00 IST every day (GitHub may start it a few minutes late)
     - cron: "30 23 * * *"          # 05:00 IST catch-up: reuses today's plan, posts only what 02:00 didn't (no-op if all done)
+    - cron: "0 22 * * *"           # 03:30 IST: channel_b's repo (sees channel_a's plan of the day)
+    - cron: "0 0 * * *"            # 05:30 IST: channel_b catch-up
+    # each repo runs only the crons its channel lists in config.yaml daily.channels (others exit in seconds)
   workflow_dispatch:
     inputs:
       dry_run:
@@ -59,8 +62,10 @@ jobs:
         run: |
           git config user.name "joshiclip-bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          $ch = python -c "import json; from joshiclip import config; print(json.dumps([c['name'] for c in config.load()['daily']['channels']]))"
+          $env:JOSHICLIP_SCHEDULE = "${{ github.event.schedule }}"
+          $ch = python -c "import json; from joshiclip import config, daily; print(json.dumps(daily.my_channels(config.load()['daily'])))"
           "channels=$ch" >> $env:GITHUB_OUTPUT
+          if ($ch -eq "[]") { Write-Host "no channel of this repo runs at this time; nothing to do"; exit 0 }
           if ("${{ inputs.dry_run }}" -eq "true") { python -m joshiclip daily plan --dry-run } else { python -m joshiclip daily plan }
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $d = python -c "from joshiclip import daily, config; print(daily._today(config.load()['daily']).date().isoformat())"
@@ -72,7 +77,7 @@ jobs:
           path: work
           key: work-${{ github.run_id }}
       - name: Upload plan
-        if: ${{ !inputs.dry_run }}
+        if: ${{ !inputs.dry_run && steps.plan.outputs.channels != '[]' }}
         uses: actions/upload-artifact@v7
         with:
           name: plan
@@ -94,7 +99,7 @@ jobs:
 
   post:
     needs: plan
-    if: ${{ !inputs.dry_run }}
+    if: ${{ !inputs.dry_run && needs.plan.outputs.channels != '[]' }}
     runs-on: ${{ vars.RUNNER || 'windows-latest' }}
     timeout-minutes: 90                 # 6 clips recorded within a 45 min budget + renders
     env:

@@ -16,6 +16,12 @@ from pathlib import Path
 from .config import ROOT
 
 STATE = ROOT / "state"
+PARTNERS = STATE / "_partners"     # other repos' state/ (another channel run from its own repo), read-only, git-ignored
+
+
+def _state_dirs() -> list[Path]:
+    """Own state/ + every partner repo's state/: a scene used by ANY channel in any repo is used."""
+    return [STATE] + (sorted(p / "state" for p in PARTNERS.iterdir() if (p / "state").is_dir()) if PARTNERS.is_dir() else [])
 
 
 def _read_jsonl(p: Path) -> list[dict]:
@@ -25,7 +31,7 @@ def _read_jsonl(p: Path) -> list[dict]:
 
 
 def posted() -> list[dict]:
-    return [r for p in sorted(STATE.glob("posted_*.jsonl")) for r in _read_jsonl(p)]
+    return [r for d in _state_dirs() for p in sorted(d.glob("posted_*.jsonl")) for r in _read_jsonl(p)]
 
 
 def plan_path(date: str) -> Path:
@@ -35,7 +41,7 @@ def plan_path(date: str) -> Path:
 def recent_plans(today: str, reserve_days: int) -> list[dict]:
     t = dt.date.fromisoformat(today)
     out = []
-    for p in sorted((STATE / "plans").glob("*.json")):
+    for p in [q for d in _state_dirs() for q in sorted((d / "plans").glob("*.json"))]:
         try:
             d = dt.date.fromisoformat(p.stem)
         except ValueError:

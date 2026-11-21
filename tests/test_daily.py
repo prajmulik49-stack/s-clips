@@ -123,3 +123,27 @@ def test_two_channels_never_get_the_same_scene():
     assert len(a) == 2 and len(b) == 2 and not (a & b)
     got = daily.assign(ms, {"channel_a": 2, "channel_b": 2}, cap=4)          # one old vlog: 2 + 2
     assert [len(got["channel_a"]), len(got["channel_b"])] == [2, 2]
+
+
+def test_each_repo_runs_only_its_channel_at_its_times(monkeypatch):
+    d = {"channels": [{"name": "channel_a", "repo": "o/a", "crons": ["30 20 * * *", "30 23 * * *"]},
+                      {"name": "channel_b", "repo": "o/b", "crons": ["0 22 * * *", "0 0 * * *"]}]}
+    monkeypatch.delenv("GITHUB_REPOSITORY", raising=False); monkeypatch.delenv("JOSHICLIP_SCHEDULE", raising=False)
+    assert daily.my_channels(d) == ["channel_a", "channel_b"]                 # local: all
+    monkeypatch.setenv("GITHUB_REPOSITORY", "o/b")
+    assert daily.my_channels(d) == ["channel_b"]                              # manual run in repo b
+    monkeypatch.setenv("JOSHICLIP_SCHEDULE", "30 20 * * *")
+    assert daily.my_channels(d) == []                                         # channel_a's cron fired in repo b
+    monkeypatch.setenv("JOSHICLIP_SCHEDULE", "0 22 * * *")
+    assert daily.my_channels(d) == ["channel_b"]
+
+
+def test_partner_repo_scenes_count_as_used(tmp_path, monkeypatch):
+    st = _state(tmp_path, monkeypatch)
+    monkeypatch.setattr(ledger, "PARTNERS", st / "_partners")
+    other = st / "_partners" / "o__a" / "state"
+    (other / "plans").mkdir(parents=True)
+    (other / "posted_channel_a.jsonl").write_text(json.dumps({"channel": "channel_a", "vid": "v", "start": 10.0, "end": 50.0}) + "\n")
+    (other / "plans" / "2026-11-22.json").write_text(json.dumps({"channels": {"channel_a": [{"vid": "v", "start": 100.0, "end": 140.0}]}}))
+    u = ledger.used_spans("2026-11-22", 2)
+    assert ledger.overlaps(u, "v", 30, 60) and ledger.overlaps(u, "v", 120, 160) and not ledger.overlaps(u, "v", 60, 90)
