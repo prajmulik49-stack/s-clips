@@ -144,7 +144,7 @@ def plan_day(cfg: Config, dry_run: bool = False, log=print, replan: bool = False
 
     take(vlogs[0], want_latest, label="(latest)")
     cap = int(d.get("max_per_old_vlog", 4))
-    for v in vlogs[1:]:
+    for v in old_vlog_order(cfg, vlogs[1:], exh, rng):
         need = {ch: per - len(plan["channels"][ch]) for ch in chans}
         if all(n <= 0 for n in need.values()):
             break
@@ -194,6 +194,19 @@ def prune_cache(cfg: Config, keep: set[str], max_gb: float | None = None, log=pr
     if gone:
         log(f"  cache: removed {len(gone)} old analyses ({', '.join(gone)}); {total / 1024 ** 3:.1f} GB left")
     return gone
+
+
+def old_vlog_order(cfg: Config, old: list[dict], exhausted, rng: random.Random) -> list[dict]:
+    """Any old vlog, not always the next-newest: one already analysed (work/ cache: instant) first, then one random
+    vlog from the whole pool (new variety; it has to be recorded, so only one per day), then the remaining cached
+    ones, then the rest. Same date -> same order (re-runs make the same plan)."""
+    old = [v for v in old if v["vid"] not in exhausted]
+    work = cfg.path("work")
+    cached = [v for v in old if (work / f"{v['vid']}-fast" / "norm.json").exists()]
+    ids = {v["vid"] for v in cached}
+    fresh = [v for v in old if v["vid"] not in ids]
+    rng.shuffle(cached); rng.shuffle(fresh)
+    return cached[:1] + fresh[:1] + cached[1:] + fresh[1:]
 
 
 def _slot(d: dict, ch_index: int, k: int, now: dt.datetime) -> str | None:

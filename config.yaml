@@ -340,13 +340,16 @@ daily:                                   # `joshiclip daily run|plan|post` (josh
     # - {name: channel_b, env: YT_B}     # 2nd channel: uncomment + `joshiclip auth --prefix YT_B` (own Google Cloud project)
   per_channel: 6                         # free API quota = 10,000 units/day = 6 uploads (1,600 each) per Cloud project
   latest_per_channel: [2, 2]             # 2 from the newest vlog ...
-  max_per_old_vlog: 2                    # ... + 2 each from 2 older vlogs = 6 a day
+  max_per_old_vlog: 2                    # ... + 2 each from 2 older vlogs = 6 a day: one already analysed (cache,
+                                         # instant) + one RANDOM old vlog from the pool (variety; recorded once)
   vlog_pool: 200                         # how far back "older vlogs" go
   max_moments_per_vlog: 20
   reserve_days: 2                        # a planned scene stays blocked this long even if its upload failed
   utc_offset_min: 330                    # IST
   schedule: true                         # upload as private + publishAt at these IST times
-  publish_times: ["08:00", "11:00", "13:30", "17:00", "19:30", "21:30"]   # IST; evening slots = peak Indian Shorts traffic
+  # IST, BEST SLOT FIRST: the k-th Short posted today gets the k-th time. Shorts go out latest vlog first, best score
+  # first, so the newest vlog's 2 get the evening peak (19:30 / 21:30), the 4 old-vlog ones lunch, after-work, morning.
+  publish_times: ["19:30", "21:30", "13:30", "17:00", "11:00", "08:00"]
   channel_offset_min: [0, 40]            # channel_b posts 40 min after channel_a
   privacy: public                        # used when schedule is false
   category_id: "24"                      # Entertainment

@@ -89,3 +89,15 @@ def test_cta_phrases_match_hindi_captions_without_false_hits():
     assert lex.hits("cta", "कमेंट करके जरूर बताना")
     assert not lex.hits("cta", "आज हम एयरपोर्ट जा रहे हैं")
     assert not lex.hits("intro_outro", "हां") and not lex.hits("intro_outro", "ये")   # one-word sentences
+
+
+def test_old_vlogs_one_cached_then_one_random(tmp_path):
+    import random
+    from joshiclip.config import Config
+    cfg = Config({"paths": {"work": str(tmp_path)}, "daily": {}})
+    for v in ("c1", "c2"):
+        (tmp_path / f"{v}-fast").mkdir(); (tmp_path / f"{v}-fast" / "norm.json").write_text("{}")
+    old = [{"vid": v} for v in ("n1", "c1", "n2", "x", "c2", "n3")]
+    got = [v["vid"] for v in daily.old_vlog_order(cfg, old, {"x"}, random.Random(1))]
+    assert got[0] in ("c1", "c2") and got[1] in ("n1", "n2", "n3") and "x" not in got and len(got) == 5
+    assert got == [v["vid"] for v in daily.old_vlog_order(cfg, old, {"x"}, random.Random(1))]   # same day, same plan
