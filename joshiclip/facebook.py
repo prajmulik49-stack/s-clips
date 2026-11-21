@@ -45,8 +45,10 @@ def _check(r) -> dict:
     return j
 
 
-def caption(title: str, hashtags: list[str], credit: str | None) -> str:
+def caption(title: str, hashtags: list[str], credit: str | None, link: str | None = None) -> str:
     lines = [title.strip()]
+    if link:
+        lines += ["", f"Full vlog: {link}"]
     if credit:
         lines += ["", credit]
     tags = " ".join(t if t.startswith("#") else "#" + t for t in hashtags if t and t not in title)
@@ -93,8 +95,32 @@ def make_page_token(cfg=None) -> int:
         "fb_exchange_token": short}))["access_token"]
     pages = _check(requests.get(f"{GRAPH}/{v}/me/accounts", timeout=60,
                                 params={"access_token": long_user, "fields": "id,name,access_token,tasks"})).get("data", [])
-    if not pages:
-        raise SystemExit("this Facebook account manages no Page (or pages_show_list was not granted)")
+    if not pages:      # Page inside a Business portfolio: me/accounts is empty, the business lists it
+        found = {}
+        biz = _check(requests.get(f"{GRAPH}/{v}/me/businesses", timeout=60,
+                                  params={"access_token": long_user, "fields": "id,name"})).get("data", [])
+        for b in biz:
+            for edge in ("owned_pages", "client_pages"):
+                try:
+                    for p in _check(requests.get(f"{GRAPH}/{v}/{b['id']}/{edge}", timeout=60, params={
+                            "access_token": long_user, "fields": "id,name"})).get("data", []):
+                        found[p["id"]] = p
+                except RuntimeError:
+                    pass
+        for pid, p in found.items():
+            try:
+                t = _check(requests.get(f"{GRAPH}/{v}/{pid}", timeout=60,
+                                        params={"access_token": long_user, "fields": "id,name,access_token"}))
+                if t.get("access_token"):
+                    pages.append({"id": pid, "name": t.get("name", p.get("name")), "access_token": t["access_token"],
+                                  "tasks": ["CREATE_CONTENT"]})
+            except RuntimeError:
+                pass
+        if not pages:
+            raise SystemExit(f"no Page found: me/accounts is empty and {len(biz)} business portfolio(s) gave "
+                             f"{len(found)} Page(s) without a token. In Graph API Explorer pick 'Get User Access "
+                             "Token' and select your Page in the pop-up (Edit previous settings), or give this "
+                             "Facebook account full control of the Page.")
     want = _env("FB_PAGE_NAME").lower()
     if len(pages) > 1 and not want:
         names = ", ".join(p["name"] for p in pages)

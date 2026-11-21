@@ -78,7 +78,7 @@ def build(rep: dict, cfg, vlog_title: str | None) -> list[dict]:
             desc += ["", "Keywords: " + ", ".join(kw[: int(u.get("max_keywords", 30))])]
         desc += ["", " ".join(tags)]
         items.append({"rank": len(items) + 1, "file": s["file"], "title": yt_title, "description": "\n".join(desc),
-                      "hashtags": tags, "keywords": kw, "source": f"{_clock(s['start'])}-{_clock(s['end'])}", "score": s["final"],
+                      "hashtags": tags, "keywords": kw, "link": link, "source": f"{_clock(s['start'])}-{_clock(s['end'])}", "score": s["final"],
                       "title_source": s.get("title_source"), "viewer_score": s.get("viewer_score")})
     return items
 

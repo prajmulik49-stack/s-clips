@@ -381,7 +381,7 @@ def post(cfg: Config, channel: str, plan: dict | None = None, upload_videos: boo
             if fb_on:      # Facebook can never stop or undo YouTube: any error is only logged
                 try:
                     rec["fb_id"] = facebook.post_reel(cfg, od / s["file"], facebook.caption(
-                        p["title"], p["hashtags"], cfg.get("upload", {}).get("credit_line")), when, log)
+                        p["title"], p["hashtags"], cfg.get("upload", {}).get("credit_line"), p.get("link")), when, log)
                 except Exception as e:  # noqa: BLE001
                     log(f"[{channel}] facebook skipped for {s['file']}: {str(e)[:200]}")
             ledger.git_commit([ledger.record_post(channel, rec)], f"{channel}: posted {yid}", _push(cfg), log)
