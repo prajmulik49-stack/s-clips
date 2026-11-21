@@ -267,7 +267,10 @@ def run_fast(cfg: Config, target, latest=False, vid=None, mode="final", max_shor
     clips = {}
     local_norm = A["meta"].get("local_norm") if record.mode() != "record" else None   # record mode: always record
     if not local_norm and wins:
-        spans = [(max(0.0, c["start"] - pad), c["end"] + pad, out_dir / f"clip_{k:02d}.mkv") for k, c in enumerate(wins, 1)]
+        # the span is in the name: a scene that moved never reuses an old clip of the same rank
+        spans = [(max(0.0, c["start"] - pad), c["end"] + pad,
+                  out_dir / f"clip_{k:02d}_{max(0.0, c['start'] - pad):.0f}-{c['end'] + pad:.0f}.mkv")
+                 for k, c in enumerate(wins, 1)]
         for c, p in zip(wins, _get_clips(cfg, url, vid, spans, log)):
             clips[c["id"]] = p
     C.timings["download_4k_clips"] = round(time.perf_counter() - t, 1)

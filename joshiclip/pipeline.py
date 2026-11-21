@@ -178,6 +178,10 @@ def analyze(cfg: Config, target: str | None, latest: bool = False, vid: str | No
         vfps = float(vis["fps"])
         fc = vis["face_count"].astype(np.float32)
         ps["faces"] = np.array([fc[int(i * vfps):int((i + 1) * vfps)].mean() if int(i * vfps) < len(fc) else 0 for i in range(n_sec)], np.float32)
+        # someone facing the camera: the largest face is >= 10 % of the frame height (scenery / far-away people: no)
+        fh = vis["faces"][:, 0, 3] if vis["faces"].ndim == 3 and len(vis["faces"]) else np.zeros(len(fc), np.float32)
+        big = (fh >= 0.10).astype(np.float32)
+        ps["face_big"] = np.array([big[int(i * vfps):int((i + 1) * vfps)].mean() if int(i * vfps) < len(big) else 0 for i in range(n_sec)], np.float32)
         mo = vis["motion"]
         ps["motion"] = np.array([mo[int(i * vfps):int((i + 1) * vfps)].mean() if int(i * vfps) < len(mo) else 0 for i in range(n_sec)], np.float32)
         ps["location"] = topics.location_curve(vis["hist"], vfps, n_sec, cfg["topics"]["location_hist_window_s"])
@@ -189,7 +193,7 @@ def analyze(cfg: Config, target: str | None, latest: bool = False, vid: str | No
         amb = np.stack([ys[:, j] for j in range(ys.shape[1])] + [np.clip((ps["rms"] + 60) / 60, 0, 1)], 1)
         ps["ambience_vec"] = amb.astype(np.float32)
         return {"n_sec": n_sec}, ps
-    _, ps = C.run("per_second", 1, {k: C.keys[k] for k in ("vad", "align", "audio_feats", "yamnet", "vision", "scenes")}
+    _, ps = C.run("per_second", 2, {k: C.keys[k] for k in ("vad", "align", "audio_feats", "yamnet", "vision", "scenes")}
                   | {"thr": cfg["align"]["vad_threshold"], "lw": cfg["topics"]["location_hist_window_s"]}, _per_sec, log)
 
     tp, _ = C.run("topics", 2, {"se": C.keys["sentences"], "ps": C.keys["per_second"], "t": cfg["topics"], "lex": lex_h},

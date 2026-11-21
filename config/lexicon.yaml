@@ -26,6 +26,29 @@ intro_outro:
   - comment karke batana
   - comment box
 
+# user: a Short must never contain him asking viewers to like / comment / subscribe / share (any sentence, not
+# only the first). Devanagari + Latin: both give the same phonetic key (सब्सक्राइब = subscribe).
+cta:
+  - सब्सक्राइब
+  - subscribe
+  - कमेंट
+  - comment
+  - लाइक कर
+  - लाइक करो
+  - लाइक कर देना
+  - वीडियो को लाइक
+  - like kar
+  - like karo
+  - शेयर कर
+  - शेयर करो
+  - share kar
+  - बेल आइकन
+  - bell icon
+  - चैनल को
+  - नेक्स्ट व्लॉग
+  - next vlog
+  - अगले व्लॉग
+
 sponsor: [sponsor, sponsored, link description, description mein, discount code, coupon code, download karo, app download]
 
 dependent_first: [aur, phir, fir, toh, to, woh, vo, isliye, lekin, matlab, usne, wahi, vahi, but, and, so, kyunki, jabki, tabhi, uske, iske]

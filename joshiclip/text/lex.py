@@ -66,9 +66,11 @@ def phrase_in(phrase: str, text: str, ratio: int = 85) -> bool:
             win = tk[i:i + n + 1]
             if win[0] == pk[0] and win[-1] == pk[-1] and any(win[:j] + win[j + 1:] == pk for j in range(1, n)):
                 return True
-    p = " ".join(pk)
-    if len(p) >= 6 and n >= 2:
-        return fuzz.partial_ratio(p, " ".join(tk)) >= ratio
+    p, t = " ".join(pk), " ".join(tk)
+    # the text must be at least as long as the phrase: partial_ratio otherwise finds a one-word sentence ("haan")
+    # inside the phrase ("milte hain kal") and calls it a match
+    if len(p) >= 6 and n >= 2 and len(t) >= len(p):
+        return fuzz.partial_ratio(p, t) >= ratio
     return False
 
 

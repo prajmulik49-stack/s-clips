@@ -48,6 +48,12 @@ def best_span(A: dict, t: float, cfg: dict, lo_bound: float = 0.0, hi_bound: flo
     z_laugh = ps["laugh"]; z_cheer = ps["cheer"]
     starts = [s for s in sents if t - c["max_lead_s"] <= s["s"] <= t - c["min_lead_s"] and s["s"] >= lo_bound]
     ends = [s for s in sents if t + c["min_tail_s"] <= s["e"] <= t + c["max_tail_s"] and s["e"] <= hi_bound]
+    if "_cta" not in A:     # user: never a Short with "like / comment / subscribe kar dena" anywhere in it
+        A["_cta"] = [bool(lex.hits("cta", x["text"]) or any("vlog" in p for p in lex.hits("intro_outro", x["text"])))
+                     for x in sents]                 # + "welcome to my new vlog" / "aaj ke vlog mein" anywhere
+    cta = A["_cta"]
+    face = ps.get("face_big")
+    hook_s, hook_min = float(c.get("hook_face_s", 2.0)), float(c.get("hook_face_min", 0.5))
     best = None
     for S in starts:
         w0 = words[S["w0"]]
@@ -58,11 +64,18 @@ def best_span(A: dict, t: float, cfg: dict, lo_bound: float = 0.0, hi_bound: flo
         sq = (0.35 * _lin(S["pause_before"], 0.1, 1.2) + 0.25 * (0 if dep else 1)
               + 0.2 * (1 if S.get("is_boundary") else 0.4 * _lin(S.get("boundary_score", 0), 0.1, 0.6))
               + 0.2 * (1 if (S["e"] - S["s"]) <= 5 and S["complete"] else 0.4))
-        if intro:
+        if intro or cta[S["id"]]:
             continue
+        # hook = a person on screen talking (user: no scenery-only openings): face in most of the first seconds
+        if face is not None and hook_min > 0:
+            i0 = int(a)
+            if float(np.mean(face[i0:max(i0 + 1, int(np.ceil(a + hook_s)))] if i0 < len(face) else [0])) < hook_min:
+                continue
         for E in ends:
             if E["id"] < S["id"]:
                 continue
+            if any(cta[S["id"]:E["id"] + 1]):
+                break                       # every later end contains this CTA sentence too
             wl = words[E["w1"] - 1]
             nxt_s = words[E["w1"]]["s"] if E["w1"] < len(words) else wl["e"] + 1.0
             b = _quiet_point(rms10, wl["e"] + 0.03, min(nxt_s - 0.02, wl["e"] + c["max_post_roll_s"]), wl["e"] + 0.08)

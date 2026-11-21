@@ -78,3 +78,14 @@ def test_uploaded_short_and_sources_are_deleted(tmp_path):
     daily._delete_sources(tmp_path, log=lambda *a: None)
     left = sorted(str(p.relative_to(tmp_path)).replace("\\", "/") for p in tmp_path.rglob("*") if p.is_file())
     assert left == ["02_B.mp4", "report.md", "short_02/voice.wav", "upload.md"]   # 02 wasn't uploaded
+
+
+def test_cta_phrases_match_hindi_captions_without_false_hits():
+    import yaml
+    from joshiclip.config import ROOT
+    from joshiclip.text import lex
+    lex.set_lexicon(yaml.safe_load((ROOT / "config/lexicon.yaml").read_text(encoding="utf-8")))
+    assert lex.hits("cta", "पसंद आया तो लाइक कर देना") and lex.hits("cta", "चैनल पे सब्सक्राइब कर देना")
+    assert lex.hits("cta", "कमेंट करके जरूर बताना")
+    assert not lex.hits("cta", "आज हम एयरपोर्ट जा रहे हैं")
+    assert not lex.hits("intro_outro", "हां") and not lex.hits("intro_outro", "ये")   # one-word sentences
