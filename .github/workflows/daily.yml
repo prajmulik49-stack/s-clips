@@ -7,6 +7,7 @@ name: daily-shorts
 on:
   schedule:
     - cron: "30 20 * * *"          # 02:00 IST every day (GitHub may start it a few minutes late)
+    - cron: "30 23 * * *"          # 05:00 IST catch-up: reuses today's plan, posts only what 02:00 didn't (no-op if all done)
   workflow_dispatch:
     inputs:
       dry_run:
@@ -24,11 +25,14 @@ permissions:
 env:
   PYTHONUTF8: "1"
   PYTHONIOENCODING: utf-8
+  # record = play each vlog in Chrome and record it (no yt-dlp download; GitHub IPs get bot-checked).
+  # Override with repo variable JOSHICLIP_FETCH = auto (yt-dlp first, record if it fails) or ytdlp.
+  JOSHICLIP_FETCH: ${{ vars.JOSHICLIP_FETCH || 'record' }}
 
 jobs:
   plan:
     runs-on: ${{ vars.RUNNER || 'windows-latest' }}
-    timeout-minutes: 170
+    timeout-minutes: 75                 # a new vlog is recorded in real time; analyses are cached, so usually ~25 min
     env:
       YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}   # listings + comments via the API (fewer yt-dlp bot checks)
       JOSHICLIP_YTDLP_PROXY: ${{ secrets.YTDLP_PROXY }}  # optional: download via a non-datacenter IP
@@ -92,7 +96,7 @@ jobs:
     needs: plan
     if: ${{ !inputs.dry_run }}
     runs-on: ${{ vars.RUNNER || 'windows-latest' }}
-    timeout-minutes: 340
+    timeout-minutes: 90                 # 6 clips recorded within a 45 min budget + renders
     env:
       YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
       JOSHICLIP_YTDLP_PROXY: ${{ secrets.YTDLP_PROXY }}

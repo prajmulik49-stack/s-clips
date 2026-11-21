@@ -330,8 +330,8 @@ daily:                                   # `joshiclip daily run|plan|post` (josh
     - {name: channel_a, env: YT_A}       # secrets YT_A_CLIENT_ID / YT_A_CLIENT_SECRET / YT_A_REFRESH_TOKEN
     # - {name: channel_b, env: YT_B}     # 2nd channel: uncomment + `joshiclip auth --prefix YT_B` (own Google Cloud project)
   per_channel: 6                         # free API quota = 10,000 units/day = 6 uploads (1,600 each) per Cloud project
-  latest_per_channel: [2, 3]             # this many from the newest vlog (2 or 3, random per day)
-  max_per_old_vlog: 4                    # older vlogs: at most this many scenes per vlog per day (all channels)
+  latest_per_channel: [2, 2]             # 2 from the newest vlog ...
+  max_per_old_vlog: 2                    # ... + 2 each from 2 older vlogs = 6 a day
   vlog_pool: 200                         # how far back "older vlogs" go
   max_moments_per_vlog: 20
   reserve_days: 2                        # a planned scene stays blocked this long even if its upload failed
@@ -341,8 +341,10 @@ daily:                                   # `joshiclip daily run|plan|post` (josh
   channel_offset_min: [0, 40]            # channel_b posts 40 min after channel_a
   privacy: public                        # used when schedule is false
   category_id: "24"                      # Entertainment
-  plan_max_minutes: 150
-  post_max_minutes: 290
+  plan_max_minutes: 35                   # whole daily run < 2 h: no new vlog is started after 35 min of planning
+  post_max_minutes: 75
+  cache_max_gb: 6                        # work/*-fast analyses kept (GitHub cache limit is 10 GB/repo); oldest-used go first
+  record_budget_minutes: 45              # all of today's clip recordings share this; 4K while it fits, else 1440p/1080p
   git_push: false                        # commit + push state/ after every upload (always on inside GitHub Actions)
   ci_overrides:                          # GitHub-hosted runner: 4 vCPU / 16 GB
     fast: {parallel_renders: 2, frame_workers: 2, x264_threads: 2}
@@ -369,6 +371,23 @@ fast:                                    # `joshiclip run --fast`: 360p analysis
   x264_threads: 3
   separator: none                        # keep original sound; dfn | demucs available
   render_preset: medium                  # same CRF as final; x264 medium vs slow = ~1.5x faster, near-identical
+
+record:                                  # JOSHICLIP_FETCH=record (GitHub Actions): play the vlog in Chrome + record it, no yt-dlp
+  clip_max_quality: hd2160               # start at the best the video offers (4K) ...
+  clip_min_quality: hd720                # ... step down only if even the slowest speed loses frames
+  max_missing_frac: 0.01                 # picture: <= 1 % frames missing (each = one invisible 16 ms repeat) ...
+  max_gap_frames: 2                      # ... and never more than 2 in a row (that would be a visible hitch)
+  min_rate: 0.25                         # 4K is played at 0.25x so no frame is dropped; slower is never needed
+  clip_bitrate_mbps: 20                  # at 1080p; x (h/1080)^1.5 -> 4K ~57 Mbps (H.264 via WebCodecs)
+  audio_quality: tiny                    # the 1x sound pass streams 144p video: no buffering -> no sound gaps
+  audio_retries: 3                       # a sound take with any pause (ad / buffering) is recorded again
+  audio_kbps: 256
+  analysis_quality: medium               # 360p for the full-length analysis copy (1x: 30 min vlog = 30 min)
+  analysis_bitrate_mbps: 2
+  headless: false                        # YouTube stalls headless Chrome; GitHub's Windows runners have a desktop
+  start_timeout_s: 45                    # a quality that doesn't start playing by then -> next lower one
+  pad_wait_s: 2.0
+  sound_offset_ms: 0                     # manual lip-sync nudge (+ = sound later); measured error is 0-1 ms
 
 render:
   draft: {height: 720, preset: veryfast, crf: 23, audio_bitrate: 160k}

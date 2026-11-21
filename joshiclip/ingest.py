@@ -42,9 +42,9 @@ def is_url(s: str) -> bool:
 _updated = False
 
 
-def ytdlp_base(cfg: Config) -> list[str]:
+def ytdlp_base(cfg: Config, proxy: bool = True) -> list[str]:
     d = cfg["download"]
-    return [sys.executable, "-m", "yt_dlp", *tools.ytdlp_args(), "--sleep-interval", str(d["sleep_interval"]),
+    return [sys.executable, "-m", "yt_dlp", *tools.ytdlp_args(proxy), "--sleep-interval", str(d["sleep_interval"]),
             "--max-sleep-interval", str(d["max_sleep_interval"]), "--socket-timeout", str(d.get("socket_timeout", 20)),
             "--retries", "10", "--extractor-retries", "5", "--no-warnings"]
 

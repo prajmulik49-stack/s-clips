@@ -46,3 +46,25 @@ def test_music_pick_is_seeded(tmp_path):
     assert p1 == music.pick(tmp_path, "vid:12.000") and p1.suffix != ".txt"
     assert len({music.pick(tmp_path, f"vid:{i}").name for i in range(40)}) == 3
     assert music.pick(tmp_path / "missing", "x") is None
+
+
+def test_planned_scene_is_found_by_span_when_ids_shift():
+    from joshiclip import fast
+    cands = [{"id": i, "start": 10.0 * i, "end": 10.0 * i + 40} for i in range(5)]
+    assert fast._match_pick(cands, [1, 3], [(10, 50), (30, 70)], lambda *a: None) == [1, 3]   # unchanged
+    assert fast._match_pick(cands, [0, 4], [(20, 60), (999, 1039)], lambda *a: None) == [2]   # moved / gone
+    assert fast._match_pick(cands, [3], None) == [3]                                          # old callers
+
+
+def test_prune_cache_drops_oldest_but_keeps_planned(tmp_path):
+    import os
+    from joshiclip.config import Config
+    cfg = Config({"paths": {"work": str(tmp_path)}, "daily": {}})
+    for k, name in enumerate(["old", "mid", "new", "full"]):
+        d = tmp_path / (name if name == "full" else f"{name}-fast")
+        d.mkdir()
+        (d / "norm.json").write_bytes(b"x" * 1000)
+        os.utime(d / "norm.json", (1000 + k, 1000 + k))
+    gone = daily.prune_cache(cfg, keep={"old"}, max_gb=2000 / 1024 ** 3, log=lambda *a: None)
+    assert gone == ["mid-fast"]                                  # oldest unplanned goes; "old" is planned today
+    assert (tmp_path / "old-fast").exists() and (tmp_path / "new-fast").exists() and (tmp_path / "full").exists()

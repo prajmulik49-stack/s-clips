@@ -68,6 +68,10 @@ def moments(cfg: Config, vid: str, used: dict, log=print) -> list[dict]:
     """This vlog's planned moments (best first) that overlap nothing already used."""
     from . import pipeline
     A = pipeline.analyze(cfg, vid, False, vid, log, fast=True)
+    try:
+        os.utime(Path(A["workdir"]) / "norm.json")       # "used today" for prune_cache
+    except OSError:
+        pass
     cards, sel = pipeline.plan(cfg, A, cfg["engine"]["max_shorts"])
     out = []
     for i in sel["winners"]:
@@ -159,7 +163,37 @@ def plan_day(cfg: Config, dry_run: bool = False, log=print, replan: bool = False
     if not dry_run:
         touched.append(ledger.save_plan(plan))
         ledger.git_commit(touched, f"daily plan {date}", _push(cfg), log)
+        prune_cache(cfg, {it["vid"] for items in plan["channels"].values() for it in items}, log=log)
     return plan
+
+
+def prune_cache(cfg: Config, keep: set[str], max_gb: float | None = None, log=print) -> list[str]:
+    """Keep work/<vid>-fast analyses under daily.cache_max_gb (GitHub's cache holds 10 GB per repo; past that the
+    save fails and the post job has to re-record the vlog). Oldest-used first; today's planned vlogs are never
+    removed. Full (non-fast) analyses from local runs are not touched."""
+    import shutil
+    limit = float(max_gb if max_gb is not None else cfg["daily"].get("cache_max_gb", 6)) * 1024 ** 3
+    root = cfg.path("work")
+    dirs = []
+    for d in root.glob("*-fast"):
+        if not d.is_dir():
+            continue
+        size = sum(f.stat().st_size for f in d.rglob("*") if f.is_file())
+        used = max((f.stat().st_mtime for f in d.glob("norm.json")), default=d.stat().st_mtime)
+        dirs.append((used, size, d))
+    total = sum(s for _, s, _ in dirs)
+    gone = []
+    for used, size, d in sorted(dirs):
+        if total <= limit:
+            break
+        if d.name[: -len("-fast")] in keep:
+            continue
+        shutil.rmtree(d, ignore_errors=True)
+        total -= size
+        gone.append(d.name)
+    if gone:
+        log(f"  cache: removed {len(gone)} old analyses ({', '.join(gone)}); {total / 1024 ** 3:.1f} GB left")
+    return gone
 
 
 def _slot(d: dict, ch_index: int, k: int, now: dt.datetime) -> str | None:
@@ -185,7 +219,9 @@ def post(cfg: Config, channel: str, plan: dict | None = None, upload_videos: boo
     plan = plan or json.loads(ledger.plan_path(now.date().isoformat()).read_text(encoding="utf-8"))
     cfg["_used_titles"] = plan["used_titles"]                       # the exact settings the plan was made with
     cfg["engine"]["max_shorts"] = plan["max_moments_per_vlog"]
-    chans = [c["name"] for c in d["channels"]]
+    # the plan's comments (cached in work/): fresh comments would re-score the moments and move the planned scenes
+    cfg["viewers"] = dict(cfg.get("viewers", {}), allow_network=False)
+    chans =[c["name"] for c in d["channels"]]
     ci = chans.index(channel)
     prefix = d["channels"][ci]["env"]
     items = plan["channels"].get(channel, [])
@@ -194,6 +230,8 @@ def post(cfg: Config, channel: str, plan: dict | None = None, upload_videos: boo
     if not items:
         log(f"[{channel}] nothing left to post")
         return 0
+    from . import record
+    record.set_budget(60 * float(d.get("record_budget_minutes", 45)), len(items))   # 4K while it fits, else less
     svc = None
     if upload_videos:
         if not youtube.have_secrets(prefix):
@@ -215,7 +253,8 @@ def post(cfg: Config, channel: str, plan: dict | None = None, upload_videos: boo
         od = cfg.path("out") / "daily" / plan["date"] / channel / vid
         try:
             fast.run_fast(cfg, vid, False, vid, "final", cfg["engine"]["max_shorts"], log,
-                          pick=[it["cand"] for it in group], out_dir=od)
+                          pick=[it["cand"] for it in group], out_dir=od,
+                          pick_spans=[(it["start"], it["end"]) for it in group])
         except Exception as e:  # noqa: BLE001
             log(f"[{channel}] {vid}: render failed ({type(e).__name__}: {str(e)[:300]})"); bad += len(group); continue
         rep = json.loads((od / "report.json").read_text(encoding="utf-8"))

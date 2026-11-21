@@ -6,7 +6,7 @@ requires-python = ">=3.10"
 dependencies = ["yt-dlp", "numpy<2", "scipy", "PyYAML", "faster-whisper", "onnxruntime", "mediapipe",
   "opencv-python", "scenedetect", "librosa", "soundfile", "scikit-learn", "lightgbm", "RapidFuzz",
   "torch", "torchaudio", "pillow", "demucs", "deepfilternet", "pyloudnorm", "rapidocr-onnxruntime", "pytest",
-  "google-api-python-client", "google-auth", "google-auth-oauthlib"]
+  "google-api-python-client", "google-auth", "google-auth-oauthlib", "playwright"]
 
 [project.scripts]
 joshiclip = "joshiclip.cli:main"

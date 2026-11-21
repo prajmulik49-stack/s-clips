@@ -20,11 +20,29 @@ All numbers (Shorts per day, times, how many from the latest vlog) are in `confi
 | **Upload quota.** Each upload costs 1,600 of the 10,000 free units a Google Cloud project gets per day. | **Max 6 uploads per day per project.** 10/day is not possible on the free quota. | Use **one Google Cloud project per channel** (6 + 6), and request more: Google Cloud → YouTube Data API v3 → Quotas → "Apply for higher quota" (audit form). Until it is approved, set `daily.per_channel: 6`. |
 | **Unverified API apps upload as PRIVATE.** Google locks videos uploaded by an unaudited API project to private. | Videos upload, but nobody can see them until you make them public by hand in YouTube Studio. | Pass the **YouTube API audit** (same form as above). After approval, uploads can be public/scheduled. |
 | **OAuth app in "Testing" mode.** Login tokens expire after 7 days. | Uploads stop working after a week. | OAuth consent screen → **Publish app** ("In production"). It does not need Google verification for your own accounts. |
-| **YouTube blocks GitHub's servers.** yt-dlp often gets "Sign in to confirm you're not a bot" from datacenter IPs. | The plan job fails at download. | Add a `YTDLP_COOKIES` secret (below), **or** run on your own PC as a self-hosted runner (best; see the end). |
+| **YouTube blocks GitHub's servers.** yt-dlp often gets "Sign in to confirm you're not a bot" from datacenter IPs. | Downloads fail. | The workflow therefore **does not download**: it plays each vlog in Chrome and records it (see "Recording instead of downloading"). A `YTDLP_COOKIES` secret still helps (it logs the browser in), and a self-hosted runner is still the most reliable. |
 | **Copyright / reused content.** These are Sourav Joshi's videos. | Claims, strikes, or a channel that can't be monetised. Two channels posting 20 clips a day from one creator is exactly what YouTube's "reused content" and spam rules look at. | Get the creator's permission. Keep the credit + link in the description (the tool adds it). |
 | **Music licence.** | Copyrighted music gets a Content ID claim on every Short. | Only royalty-free tracks (YouTube Audio Library). |
 
 ---
+
+## Recording instead of downloading (GitHub Actions default)
+
+The workflow sets `JOSHICLIP_FETCH=record`. Nothing goes through yt-dlp; `joshiclip/record.py` opens the vlog in
+Google Chrome on the runner and records what the player plays:
+
+- **plan job:** the whole vlog at 360p for analysis, plus the Hindi auto-captions the player loads. This runs in real
+  time (a 30 min vlog takes ~30 min), so the plan job's timeout is 320 min.
+- **post jobs:** only the chosen scenes, one after another, at the **highest quality the video offers**. If the
+  runner drops frames while recording that quality in real time (twice in a row), it steps down
+  (4K -> 1440p -> 1080p -> 720p) for the rest of the run. The log says which quality each clip got.
+- Recording pauses during ads and buffering, so recorded time = vlog time. At the start Chrome's own picture-vs-sound
+  lag is measured with a flash+beep test clip and removed from every recording.
+
+Settings: `record:` in `config.yaml`. Repo variable `JOSHICLIP_FETCH` = `auto` (yt-dlp first, record if it fails) or
+`ytdlp` (old behaviour) overrides it. Locally the default is still yt-dlp; put `JOSHICLIP_FETCH=record` in `.env` to test.
+YouTube stalls **headless** Chrome forever, so a normal (visible) Chrome window is used; GitHub's Windows
+runners have a desktop session for it.
 
 ## 1. Google Cloud: do this once per channel
 

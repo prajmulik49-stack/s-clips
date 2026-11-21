@@ -19,7 +19,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import ingest, media, tools
+from . import ingest, media, record, tools
 from .config import Config
 
 FAST_VERSION = 1
@@ -28,23 +28,67 @@ FAST_VERSION = 1
 BOT_CHECK = ("confirm you", "not a bot", "HTTP Error 429", "rate-limit")
 
 
+def _routes() -> list[bool]:
+    """[True] = through the proxy (Cloudflare WARP on GitHub runners), [False] = direct. With a proxy set, try it
+    first and fall back to direct when its exit IP is blocked (and the other way round on the next round)."""
+    import os
+    return [True, False] if (os.environ.get("JOSHICLIP_YTDLP_PROXY") or tools._dotenv().get("JOSHICLIP_YTDLP_PROXY")) else [True]
+
+
 def _ytdlp(cfg: Config, args: list[str], waits=(90, 300)) -> None:
-    """YouTube's "Sign in to confirm you're not a bot" after many requests is usually a temporary rate limit:
-    wait and retry (90 s, then 5 min) before giving up with instructions."""
+    """YouTube's "Sign in to confirm you're not a bot" depends on the IP: try every route (proxy, direct), then wait
+    and retry (90 s, then 5 min) before giving up with instructions."""
     for k in range(len(waits) + 1):
+        last = None
+        for via_proxy in _routes():
+            try:
+                media.run(ingest.ytdlp_base(cfg, via_proxy) + args)
+                return
+            except RuntimeError as e:
+                if not any(x in str(e) for x in BOT_CHECK):
+                    raise
+                last = e
+                print(f"    YouTube bot check {'via proxy' if via_proxy and len(_routes()) > 1 else 'direct'}", flush=True)
+        if k == len(waits):
+            raise RuntimeError(
+                "YouTube is bot-checking this connection. Wait 1-2 hours (the daily job retries by itself later), or "
+                "give yt-dlp cookies: cookies.txt in the project folder / YTDLP_COOKIES secret, or "
+                "JOSHICLIP_YTDLP_BROWSER=firefox in .env (see docs/DAILY_SETUP.md).\n" + str(last)[-600:]) from None
+        print(f"    YouTube bot check; waiting {waits[k]} s and retrying ({k + 1}/{len(waits)})", flush=True)
+        time.sleep(waits[k])
+
+
+def _fetch_360(cfg: Config, url: str, vid: str, wd: Path, src: Path, log=print) -> None:
+    """360p analysis copy + Hindi captions: yt-dlp, or played + recorded in Chrome (JOSHICLIP_FETCH=record/auto)."""
+    m = record.mode()
+    if m != "record":
+        f = cfg["fast"]
         try:
-            media.run(ingest.ytdlp_base(cfg) + args)
+            _ytdlp(cfg, ["-f", f["proxy_format"], "--merge-output-format", "mkv", "--continue", "-o", str(src),
+                         "--write-auto-subs", "--sub-langs", f["sub_langs"], "--sub-format", "json3",
+                         "--write-info-json", url])
             return
         except RuntimeError as e:
-            if not any(x in str(e) for x in BOT_CHECK):
+            if m != "auto":
                 raise
-            if k == len(waits):
-                raise RuntimeError(
-                    "YouTube is bot-checking this connection (too many requests). Wait 1-2 hours, or give yt-dlp "
-                    "cookies: put cookies.txt in the project folder, or set JOSHICLIP_YTDLP_BROWSER=firefox in .env "
-                    "(see docs/DAILY_SETUP.md).\n" + str(e)[-600:]) from None
-            print(f"    YouTube bot check; waiting {waits[k]} s and retrying ({k + 1}/{len(waits)})", flush=True)
-            time.sleep(waits[k])
+            log(f"  yt-dlp failed ({str(e).splitlines()[0][:80]}); recording in Chrome instead")
+    record.record_full(cfg, vid, wd, log)
+
+
+def _get_clips(cfg: Config, url: str, vid: str, spans: list, log=print) -> list[Path]:
+    """HD spans: yt-dlp --download-sections in parallel, or recorded one by one in Chrome."""
+    m = record.mode()
+    if m != "record":
+        try:
+            info = fetch_info(cfg, url, spans[0][2].parent) if any(not o.exists() for _, _, o in spans) else None
+            with ThreadPoolExecutor(cfg["fast"]["parallel_downloads"]) as ex:
+                futs = [ex.submit(download_clip, cfg, url, a, b, o, info) for a, b, o in spans]
+                return [fu.result() for fu in futs]
+        except RuntimeError as e:
+            if m != "auto":
+                raise
+            log(f"  yt-dlp failed ({str(e).splitlines()[0][:80]}); recording the clips in Chrome instead")
+    return record.record_clips(cfg, vid, spans, log)
 
 
 def ingest_lite(cfg: Config, target, latest, vid, log=print):
@@ -61,7 +105,7 @@ def ingest_lite(cfg: Config, target, latest, vid, log=print):
     if meta_p.exists() and (wd / "proxy_360p.mp4").exists() and (wd / "audio_16k_mono.wav").exists():
         log("  [cache] 360p ingest")
         return vid, wd, json.loads(meta_p.read_text(encoding="utf-8"))
-    if f.get("source", "auto") != "local":
+    if f.get("source", "auto") != "local" and record.mode() != "record":
         ingest.ytdlp_update(cfg, log)
     t = time.perf_counter()
     src = wd / "src360.mkv"
@@ -71,9 +115,7 @@ def ingest_lite(cfg: Config, target, latest, vid, log=print):
         try:
             if want_local:
                 raise RuntimeError("fast.source = local")
-            _ytdlp(cfg, ["-f", f["proxy_format"], "--merge-output-format", "mkv", "--continue", "-o", str(src),
-                         "--write-auto-subs", "--sub-langs", f["sub_langs"], "--sub-format", "json3",
-                         "--write-info-json", url])
+            _fetch_360(cfg, url, vid, wd, src, log)
         except Exception as e:  # noqa: BLE001
             if not ((local / "norm.mp4").exists() and (local / "proxy_360p.mp4").exists()):
                 raise
@@ -112,6 +154,7 @@ def ingest_lite(cfg: Config, target, latest, vid, log=print):
             "proxy_audio": round(time.perf_counter() - t, 1)}, "fast": True, "title": yt.get("title"),
             "source_fps": yt.get("fps"), "source_height": yt.get("height")}
     meta_p.write_text(json.dumps(meta, indent=1, ensure_ascii=False), encoding="utf-8")
+    src.unlink(missing_ok=True)      # ~100 MB; everything later reads proxy_360p.mp4 / the wav (smaller CI cache)
     return vid, wd, meta
 
 
@@ -193,8 +236,10 @@ def video_offset(clip: Path, proxy: Path, off_audio: float, fps: int) -> tuple[f
 
 
 def run_fast(cfg: Config, target, latest=False, vid=None, mode="final", max_shorts=None, log=print,
-             pick: list[int] | None = None, out_dir: Path | None = None) -> int:
-    """pick: render only these candidate ids (daily scheduler); out_dir: where the Shorts + report go."""
+             pick: list[int] | None = None, out_dir: Path | None = None,
+             pick_spans: list[tuple[float, float]] | None = None) -> int:
+    """pick: render only these candidate ids (daily scheduler), pick_spans: the (start, end) each had when it was
+    planned (an id whose span moved is looked up by span); out_dir: where the Shorts + report go."""
     from . import pipeline, report, sync, vertical, voice
     T0 = time.perf_counter()
     cfg = copy.deepcopy(cfg)
@@ -207,10 +252,7 @@ def run_fast(cfg: Config, target, latest=False, vid=None, mode="final", max_shor
     t_an = time.perf_counter() - T0
     cands, sel = pipeline.plan(cfg, A, max_shorts)
     if pick is not None:
-        missing = [i for i in pick if i not in sel["winners"]]
-        if missing:
-            raise RuntimeError(f"plan changed since it was scheduled: candidates {missing} are no longer winners")
-        sel = dict(sel, winners=list(pick))
+        sel = dict(sel, winners=_match_pick(cands, pick, pick_spans, log))
     vid = A["vid"]
     url = A["meta"]["source"]
     out_dir = Path(out_dir) if out_dir else cfg.path("out") / f"{vid}-fast"
@@ -223,15 +265,11 @@ def run_fast(cfg: Config, target, latest=False, vid=None, mode="final", max_shor
     # 3. 4K clips in parallel (or the local normalized 4K file when YouTube was unavailable)
     t = time.perf_counter()
     clips = {}
-    local_norm = A["meta"].get("local_norm")
-    with ThreadPoolExecutor(cfg["fast"]["parallel_downloads"]) as ex:
-      if not local_norm:
-        info = fetch_info(cfg, url, out_dir) if any(not (out_dir / f"clip_{k:02d}.mkv").exists()
-                                                    for k in range(1, len(wins) + 1)) else None
-        futs = {c["id"]: ex.submit(download_clip, cfg, url, max(0.0, c["start"] - pad), c["end"] + pad,
-                                   out_dir / f"clip_{k:02d}.mkv", info) for k, c in enumerate(wins, 1)}
-        for cid, fu in futs.items():
-            clips[cid] = fu.result()
+    local_norm = A["meta"].get("local_norm") if record.mode() != "record" else None   # record mode: always record
+    if not local_norm and wins:
+        spans = [(max(0.0, c["start"] - pad), c["end"] + pad, out_dir / f"clip_{k:02d}.mkv") for k, c in enumerate(wins, 1)]
+        for c, p in zip(wins, _get_clips(cfg, url, vid, spans, log)):
+            clips[c["id"]] = p
     C.timings["download_4k_clips"] = round(time.perf_counter() - t, 1)
 
     # 4. offsets + CFR check
@@ -255,12 +293,22 @@ def run_fast(cfg: Config, target, latest=False, vid=None, mode="final", max_shor
                          "video_corr": round(cv, 3), "av_internal_ms": round((offv - offa) * 1000, 1), "cfr": cfr}
         log(f"  clip_{k:02d}: {info['video']['width']}x{info['video']['height']}@{fps}  off {offa:.4f}s (corr {ca:.2f})  "
             f"clip A/V {srcs[c['id']]['av_internal_ms']} ms  CFR {cfr}")
-        if not cfr:
-            nclip = clip.with_name(clip.stem + "_cfr.mkv")
-            media.run([media.ff(), "-v", "error", "-y", "-i", str(clip), "-vf", f"fps={fps}", "-fps_mode", "cfr",
-                       "-c:v", "libx264", "-preset", "veryfast", "-crf", "15", "-af", "aresample=48000:async=1:first_pts=0",
-                       "-c:a", "flac", str(nclip)])
+        # Backstop for A/V drift inside a clip (record.py already removes Chrome's measured lag): only a clear,
+        # confidently measured offset of 2+ frames is corrected, so measurement noise never makes sync worse.
+        dav = offa - offv
+        fix = abs(dav) >= 2.0 / fps and cv >= 0.8
+        if fix or not cfr:
+            vin = ["-itsoffset", f"{-dav:.4f}"] if fix and dav < 0 else []
+            ain = ["-itsoffset", f"{dav:.4f}"] if fix and dav > 0 else []
+            venc = ["-c:v", "copy"] if cfr else ["-vf", f"fps={fps}", "-fps_mode", "cfr", "-c:v", "libx264",
+                                                 "-preset", "veryfast", "-crf", "15"]
+            nclip = clip.with_name(clip.stem + "_fixed.mkv")
+            media.run([media.ff(), "-v", "error", "-y", *vin, "-i", str(clip), *ain, "-i", str(clip), "-map", "0:v:0",
+                       "-map", "1:a:0", *venc, "-af", "aresample=48000:async=1:first_pts=0", "-c:a", "flac", str(nclip)])
             srcs[c["id"]]["path"] = str(nclip)
+            if fix:
+                srcs[c["id"]].update(off=offv if dav > 0 else offa, av_fixed_ms=round(dav * 1000, 1))
+                log(f"    clip_{k:02d}: A/V corrected by {dav * 1000:+.0f} ms")
     C.timings["align_clips"] = round(time.perf_counter() - t, 1)
 
     renders = {}
@@ -276,7 +324,7 @@ def run_fast(cfg: Config, target, latest=False, vid=None, mode="final", max_shor
                "out_dir": str(out_dir), "mode": mode, "cfg_key": cfg_key, "max_shorts": max_shorts}
         (jd / "job.json").write_text(json.dumps(job, ensure_ascii=False, default=str), encoding="utf-8")
         jobs.append(jd)
-    running, pending = [], list(jobs)
+    running, pending, failed = [], list(jobs), []
     par = cfg["fast"]["parallel_renders"]
     while pending or running:
         while pending and len(running) < par:
@@ -292,8 +340,11 @@ def run_fast(cfg: Config, target, latest=False, vid=None, mode="final", max_shor
                 lf.close(); running.remove(item)
                 res = jd / "result.json"
                 if pr.returncode != 0 or not res.exists():
+                    # one broken Short must not cost the others: it is reported without checks -> not uploaded
                     tail = (jd / "worker.log").read_text(encoding="utf-8", errors="ignore")[-1500:]
-                    raise RuntimeError(f"{jd.name} failed (rc={pr.returncode}):\n{tail}")
+                    log(f"  {jd.name} FAILED (rc={pr.returncode}), the other Shorts continue:\n{tail}")
+                    failed.append(jd.name)
+                    continue
                 r = json.loads(res.read_text(encoding="utf-8"))
                 ch, vr = r["result"]["checks"], r["result"]["vertical"]
                 c = next(x for x in wins if x["id"] == r["cand"])
@@ -309,8 +360,32 @@ def run_fast(cfg: Config, target, latest=False, vid=None, mode="final", max_shor
     report.write(rep, out_dir, C.timings)
     from . import upload, viewers
     log(f"  upload pack: {upload.write(rep, cfg, out_dir, A['meta'].get('title') or viewers.vlog_title(A['workdir']))}")
-    log(f"  done in {C.timings['TOTAL'] / 60:.1f} min -> {out_dir}")
-    return 0 if all(r["checks"]["ok"] for r in renders.values()) else 1
+    log(f"  done in {C.timings['TOTAL'] / 60:.1f} min -> {out_dir}" + (f"  ({len(failed)} failed: {', '.join(failed)})" if failed else ""))
+    return 0 if not failed and all(r["checks"]["ok"] for r in renders.values()) else 1
+
+
+def _match_pick(cands: list[dict], pick: list[int], spans, log=print) -> list[int]:
+    """Candidate ids to render. Without spans: the ids as given. With the planned spans: an id whose start/end still
+    match is kept; otherwise the candidate with that exact span is used (ids can shift when the analysis is rebuilt);
+    a scene that no longer exists is skipped instead of failing the whole vlog."""
+    if not spans:
+        return list(pick)
+    out = []
+    for i, (a, b) in zip(pick, spans):
+        def same(c):
+            return abs(c["start"] - a) < 0.05 and abs(c["end"] - b) < 0.05
+        if 0 <= i < len(cands) and same(cands[i]):
+            out.append(i)
+            continue
+        alt = next((c["id"] for c in cands if same(c)), None)
+        if alt is None:
+            log(f"  planned scene {a:.1f}-{b:.1f}s (cand {i}) is gone from the re-analysis; skipped")
+        else:
+            log(f"  planned scene {a:.1f}-{b:.1f}s moved from cand {i} to {alt}")
+            out.append(alt)
+    if not out:
+        raise RuntimeError("plan changed since it was scheduled: none of the planned scenes exist any more")
+    return out
 
 
 # ---------------------------------------------------------------- one run per output folder
