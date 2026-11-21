@@ -62,6 +62,30 @@ def used_spans(today: str, reserve_days: int = 2) -> dict[str, list[tuple[float,
     return u
 
 
+def partner_spans(today: str, reserve_days: int = 2) -> dict[str, list[tuple[float, float]]]:
+    """Only the OTHER repos' posted + recently planned scenes (state/_partners)."""
+    u: dict[str, list[tuple[float, float]]] = {}
+    for d in _state_dirs()[1:]:
+        for p in sorted(d.glob("posted_*.jsonl")):
+            for r in _read_jsonl(p):
+                u.setdefault(r["vid"], []).append((r["start"], r["end"]))
+        t = dt.date.fromisoformat(today)
+        for p in sorted((d / "plans").glob("*.json")):
+            try:
+                age = (t - dt.date.fromisoformat(p.stem)).days
+            except ValueError:
+                continue
+            if 0 <= age <= reserve_days:
+                for ch in json.loads(p.read_text(encoding="utf-8")).get("channels", {}).values():
+                    for it in ch:
+                        u.setdefault(it["vid"], []).append((it["start"], it["end"]))
+    return u
+
+
+def partner_plan_exists(date: str) -> bool:
+    return any((d / "plans" / f"{date}.json").exists() for d in _state_dirs()[1:])
+
+
 def overlaps(spans: dict, vid: str, a: float, b: float, pad: float = 0.0) -> bool:
     return any(min(b, e) - max(a, s) > -pad for s, e in spans.get(vid, []))
 

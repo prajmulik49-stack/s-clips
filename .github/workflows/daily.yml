@@ -35,7 +35,7 @@ env:
 jobs:
   plan:
     runs-on: ${{ vars.RUNNER || 'windows-latest' }}
-    timeout-minutes: 75                 # a new vlog is recorded in real time; analyses are cached, so usually ~25 min
+    timeout-minutes: 120                # a new vlog is recorded in real time (+ up to 40 min waiting for the other channel's plan)
     env:
       YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}   # listings + comments via the API (fewer yt-dlp bot checks)
       JOSHICLIP_YTDLP_PROXY: ${{ secrets.YTDLP_PROXY }}  # optional: download via a non-datacenter IP

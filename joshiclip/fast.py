@@ -72,7 +72,19 @@ def _fetch_360(cfg: Config, url: str, vid: str, wd: Path, src: Path, log=print) 
             if m != "auto":
                 raise
             log(f"  yt-dlp failed ({str(e).splitlines()[0][:80]}); recording in Chrome instead")
-    record.record_full(cfg, vid, wd, log)
+    try:
+        record.record_full(cfg, vid, wd, log)
+    except Exception as e:  # noqa: BLE001 - YouTube changed its player etc.: one plain download try before giving up
+        if m != "record":
+            raise
+        log(f"  Chrome recording failed ({type(e).__name__}: {str(e)[:120]}); trying yt-dlp once")
+        f = cfg["fast"]
+        try:
+            _ytdlp(cfg, ["-f", f["proxy_format"], "--merge-output-format", "mkv", "--continue", "-o", str(src),
+                         "--write-auto-subs", "--sub-langs", f["sub_langs"], "--sub-format", "json3",
+                         "--write-info-json", url], waits=())
+        except Exception:  # noqa: BLE001
+            raise e from None
 
 
 def _get_clips(cfg: Config, url: str, vid: str, spans: list, log=print) -> list[Path]:
@@ -88,7 +100,17 @@ def _get_clips(cfg: Config, url: str, vid: str, spans: list, log=print) -> list[
             if m != "auto":
                 raise
             log(f"  yt-dlp failed ({str(e).splitlines()[0][:80]}); recording the clips in Chrome instead")
-    return record.record_clips(cfg, vid, spans, log)
+    try:
+        return record.record_clips(cfg, vid, spans, log)
+    except Exception as e:  # noqa: BLE001 - same fallback as the analysis copy
+        if m != "record":
+            raise
+        log(f"  Chrome recording failed ({type(e).__name__}: {str(e)[:120]}); trying yt-dlp once")
+        try:
+            info = fetch_info(cfg, url, spans[0][2].parent)
+            return [download_clip(cfg, url, a, b, o, info, waits=()) for a, b, o in spans]
+        except Exception:  # noqa: BLE001
+            raise e from None
 
 
 def ingest_lite(cfg: Config, target, latest, vid, log=print):
@@ -173,13 +195,14 @@ def fetch_info(cfg: Config, url: str, out_dir: Path) -> Path:
     return p
 
 
-def download_clip(cfg: Config, url: str, a: float, b: float, out: Path, info: Path | None = None) -> Path:
+def download_clip(cfg: Config, url: str, a: float, b: float, out: Path, info: Path | None = None,
+                  waits=(90, 300)) -> Path:
     if out.exists():
         return out
     tmp = out.with_name(out.stem + ".part" + out.suffix)
     src = ["--load-info-json", str(info)] if info else [url]
     _ytdlp(cfg, ["-f", cfg["fast"]["clip_format"], "--download-sections", f"*{a:.3f}-{b:.3f}",
-                 "--merge-output-format", "mkv", "-o", str(tmp), *src])
+                 "--merge-output-format", "mkv", "-o", str(tmp), *src], waits=waits)
     got = sorted(tmp.parent.glob(tmp.stem + "*"))
     got = [g for g in got if g.suffix in (".mkv", ".mp4", ".webm")]
     if not got:

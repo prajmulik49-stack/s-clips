@@ -72,6 +72,27 @@ def sync_partners(cfg: Config, log=print) -> list[str]:
     return got
 
 
+def _yields(d: dict, channel: str) -> bool:
+    return bool(next((c for c in d["channels"] if c["name"] == channel), {}).get("after"))
+
+
+def _wait_for_partner_plan(cfg: Config, chans: list[str], date: str, log=print) -> None:
+    """A channel with `after:` plans only once the earlier repo's plan of the day is visible (GitHub often starts
+    scheduled runs 30-60 min late, so the earlier repo may still be planning). Gives up after
+    daily.wait_partner_plan_min and plans anyway (post() still drops any scene the partner took)."""
+    d = cfg["daily"]
+    if not os.environ.get("GITHUB_ACTIONS") or not any(_yields(d, ch) for ch in chans):
+        return
+    limit = time.time() + 60 * float(d.get("wait_partner_plan_min", 40))
+    while not ledger.partner_plan_exists(date):
+        if time.time() > limit:
+            log("  WARNING: the earlier channel's plan of today isn't there yet; planning anyway")
+            return
+        log("  waiting for the earlier channel's plan of today (5 min)")
+        time.sleep(300)
+        sync_partners(cfg, log)
+
+
 def prepare_cfg(cfg: Config) -> Config:
     """Settings for daily runs: more moments per vlog, CI-only overrides on GitHub-hosted runners."""
     c = copy.deepcopy(cfg)
@@ -156,6 +177,8 @@ def plan_day(cfg: Config, dry_run: bool = False, log=print, replan: bool = False
     if not chans:
         raise RuntimeError("no channel of config daily.channels belongs to this repo / schedule")
     sync_partners(cfg, log)
+    if not dry_run:
+        _wait_for_partner_plan(cfg, chans, date, log)
     lo, hi = d.get("latest_per_channel", [2, 3])
     want_latest = {ch: rng.randint(int(lo), int(hi)) for ch in chans}
     per = int(d.get("per_channel", 10))
@@ -189,7 +212,8 @@ def plan_day(cfg: Config, dry_run: bool = False, log=print, replan: bool = False
         log(f"  {v['vid']} {label}: " + ", ".join(f"{ch} +{len(x)}" for ch, x in got.items()))
 
     take(vlogs[0], want_latest, label="(latest)")
-    cap = int(d.get("max_per_old_vlog", 4))
+    # max_per_old_vlog counts all channels; a repo that plans only its own channel takes its share of it
+    cap = max(1, round(int(d.get("max_per_old_vlog", 4)) * len(chans) / max(1, len(d["channels"]))))
     for v in old_vlog_order(cfg, vlogs[1:], exh, rng):
         need = {ch: per - len(plan["channels"][ch]) for ch in chans}
         if all(n <= 0 for n in need.values()):
@@ -289,6 +313,14 @@ def post(cfg: Config, channel: str, plan: dict | None = None, upload_videos: boo
     items = plan["channels"].get(channel, [])
     done = {(r["vid"], round(r["start"], 3)) for r in ledger.posted()}
     items = [it for it in items if (it["vid"], round(it["start"], 3)) not in done]
+    if _yields(d, channel) and os.environ.get("GITHUB_ACTIONS"):
+        # last guard: if both repos planned at the same time anyway, the later channel gives the scene up
+        sync_partners(cfg, log)
+        theirs = ledger.partner_spans(plan["date"], int(d.get("reserve_days", 2)))
+        gone = [it for it in items if ledger.overlaps(theirs, it["vid"], it["start"], it["end"])]
+        if gone:
+            log(f"[{channel}] {len(gone)} planned scene(s) were taken by the other channel; skipped")
+            items = [it for it in items if it not in gone]
     if not items:
         log(f"[{channel}] nothing left to post")
         return 0

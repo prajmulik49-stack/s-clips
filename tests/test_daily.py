@@ -147,3 +147,18 @@ def test_partner_repo_scenes_count_as_used(tmp_path, monkeypatch):
     (other / "plans" / "2026-11-22.json").write_text(json.dumps({"channels": {"channel_a": [{"vid": "v", "start": 100.0, "end": 140.0}]}}))
     u = ledger.used_spans("2026-11-22", 2)
     assert ledger.overlaps(u, "v", 30, 60) and ledger.overlaps(u, "v", 120, 160) and not ledger.overlaps(u, "v", 60, 90)
+
+
+def test_later_channel_yields_scenes_the_partner_took(tmp_path, monkeypatch):
+    st = _state(tmp_path, monkeypatch)
+    monkeypatch.setattr(ledger, "PARTNERS", st / "_partners")
+    other = st / "_partners" / "o__a" / "state" / "plans"
+    other.mkdir(parents=True)
+    (other / "2026-11-22.json").write_text(json.dumps({"channels": {"channel_a": [{"vid": "v", "start": 100.0, "end": 140.0}]}}))
+    ledger.save_plan({"date": "2026-11-22", "channels": {"channel_b": [{"vid": "v", "start": 120.0, "end": 160.0}]}})
+    theirs = ledger.partner_spans("2026-11-22", 2)
+    assert ledger.overlaps(theirs, "v", 120, 160)            # partner's scene
+    assert not ledger.overlaps(theirs, "v", 200, 240)
+    assert ledger.partner_plan_exists("2026-11-22") and not ledger.partner_plan_exists("2026-11-23")
+    d = {"channels": [{"name": "channel_a"}, {"name": "channel_b", "after": "channel_a"}]}
+    assert daily._yields(d, "channel_b") and not daily._yields(d, "channel_a")
