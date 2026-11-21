@@ -318,8 +318,12 @@ def _render_ffmpeg(rep, T, cfg, q, g, W, H, fps, n, segs, norm, tmp, out, voc_wa
     written = media.count_frames(out)
     rep["frames_written"] = written
     rep["render_fps"] = round(written / max(1e-6, T["frames"]), 2)
-    if written != n:
+    # ffmpeg sometimes ends 1 frame early (seek/trim rounding; 17 ms at 60 fps). Up to 2 short frames is not drift:
+    # sync.check_render measures the real A/V offset right after this and blocks the upload if it's off.
+    if not (n - 2 <= written <= n):
         raise RuntimeError(f"rendered {written} frames, expected {n} - refusing to write a drifting Short")
+    if written != n:
+        log(f"    {n - written} frame(s) short of {n} (end of the trim); the sync check decides")
     got = []
     for j in range(6):
         tt = (j + 0.5) * (n / fps) / 6
