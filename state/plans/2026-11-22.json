@@ -1,0 +1,88 @@
+{
+ "channels": {
+  "channel_a": [
+   {
+    "cand": 14,
+    "end": 745.88,
+    "final": 1.096632,
+    "latest": false,
+    "start": 698.01,
+    "title": "Apko Decoration Bhut Pasand Hai 😄",
+    "title_source": "viewer_comment",
+    "vid": "sl68juRqLM4",
+    "viewer_score": 0.391
+   },
+   {
+    "cand": 24,
+    "end": 317.16,
+    "final": 1.092671,
+    "latest": false,
+    "start": 268.26,
+    "title": "Man Vs Wild 😂",
+    "title_source": "viewer_comment",
+    "vid": "sl68juRqLM4",
+    "viewer_score": 0.2098
+   },
+   {
+    "cand": 34,
+    "end": 794.29,
+    "final": 1.133932,
+    "latest": false,
+    "start": 753.82,
+    "title": "Good Use Of Brain All Time 😂",
+    "title_source": "viewer_comment",
+    "vid": "kEfCHWD1u5M",
+    "viewer_score": 0.1181
+   },
+   {
+    "cand": 13,
+    "end": 539.22,
+    "final": 1.124581,
+    "latest": false,
+    "start": 493.4,
+    "title": "Kya Acting Kar Raha Hai 😂",
+    "title_source": "viewer_comment",
+    "vid": "kEfCHWD1u5M",
+    "viewer_score": 0.1428
+   },
+   {
+    "cand": 9,
+    "end": 319.82,
+    "final": 1.86266,
+    "latest": false,
+    "start": 277.5,
+    "title": "Lagta Hai Sabka Life Insurance Hai 😄",
+    "title_source": "viewer_comment",
+    "vid": "M8a-0T0uc9k",
+    "viewer_score": 0.5005
+   },
+   {
+    "cand": 21,
+    "end": 508.18,
+    "final": 1.77565,
+    "latest": false,
+    "start": 468.18,
+    "title": "Kunali Aura Minus 9999 😂",
+    "title_source": "viewer_comment",
+    "vid": "M8a-0T0uc9k",
+    "viewer_score": 0.4037
+   }
+  ]
+ },
+ "date": "2026-11-22",
+ "max_moments_per_vlog": 20,
+ "used_titles": [
+  "Jay Shree Ram 😄",
+  "Kunali Kya Kar Raha Hai? 😜😂",
+  "Og Line By Sourav Joshi 😄",
+  "Pyuish Phone Lene Aaiga Dubara 😂",
+  "Sabse Achi Acting Bed Ne Ki 😅",
+  "Samne Dekho Kitna Traiphik Ho Raha? 😜😂",
+  "Ye To Katarnak Awaj De Raha Hai 😮"
+ ],
+ "vlog_titles": {
+  "M8a-0T0uc9k": "Circle Game With Family 😍",
+  "kEfCHWD1u5M": "FAKE CHICKEN PRANK ON FAMILY 🤭",
+  "sl68juRqLM4": "Baarish Se Ye Kya Hogya 😕 Farm House Mein"
+ }
+}
