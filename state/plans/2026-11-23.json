@@ -1,0 +1,77 @@
+{
+ "channels": {
+  "channel_a": [
+   {
+    "cand": 21,
+    "end": 447.275,
+    "final": 2.177519,
+    "latest": true,
+    "start": 407.845,
+    "title": "Nirmal Bhaiya Finllay Back 😄",
+    "title_source": "viewer_comment",
+    "vid": "PPWTwGU-cqQ",
+    "viewer_score": 0.907
+   },
+   {
+    "cand": 18,
+    "end": 400.975,
+    "final": 1.79304,
+    "latest": true,
+    "start": 362.19,
+    "title": "Sabse Budhi Generation 😂",
+    "title_source": "viewer_comment",
+    "vid": "PPWTwGU-cqQ",
+    "viewer_score": 0.3138
+   },
+   {
+    "cand": 11,
+    "end": 196.17,
+    "final": 1.303923,
+    "latest": false,
+    "start": 146.269,
+    "title": "Ye Tino 1v2 Na Karde 😅😂",
+    "title_source": "viewer_comment",
+    "vid": "sl68juRqLM4",
+    "viewer_score": 0.4806
+   },
+   {
+    "cand": 36,
+    "end": 688.479,
+    "final": 1.004056,
+    "latest": false,
+    "start": 646.11,
+    "title": "Farm House Monsoon Adventure Park 😅",
+    "title_source": "viewer_comment",
+    "vid": "sl68juRqLM4",
+    "viewer_score": 0.1758
+   }
+  ]
+ },
+ "date": "2026-11-23",
+ "max_moments_per_vlog": 20,
+ "used_titles": [
+  "Amma Ki Smile 😄",
+  "Apko Decoration Bhut Pasand Hai 😄",
+  "Defender Kab Aayegi 😄",
+  "Good Use Of Brain All Time 😂",
+  "I Hate My Mind 🤯",
+  "Jay Shree Ram 😄",
+  "Kunali Aura Minus 9999 😂",
+  "Kunali Kya Kar Raha Hai? 😜😂",
+  "Kya Acting Kar Raha Hai 😂",
+  "Lagta Hai Sabka Life Insurance Hai 😄",
+  "Man Vs Wild 😂",
+  "Og Line By Sourav Joshi 😄",
+  "Piyush Ko Mobile Gift Karo 😢",
+  "Pyuish Phone Lene Aaiga Dubara 😂",
+  "Sabse Achi Acting Bed Ne Ki 😅",
+  "Samne Dekho Kitna Traiphik Ho Raha? 😜😂",
+  "Ye Kesi Aavaj He 😂",
+  "Ye Mast Tha 😂",
+  "Ye To Katarnak Awaj De Raha Hai 😮"
+ ],
+ "vlog_titles": {
+  "PPWTwGU-cqQ": "Finally Playing GTA 6 😍 First Time",
+  "sl68juRqLM4": "Baarish Se Ye Kya Hogya 😕 Farm House Mein"
+ }
+}
