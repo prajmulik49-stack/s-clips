@@ -1,0 +1,112 @@
+{
+ "channels": {
+  "channel_a": [
+   {
+    "cand": 32,
+    "end": 536.88,
+    "final": 2.013796,
+    "latest": true,
+    "start": 487.49,
+    "title": "Tenshan Mat Lo 😲😥",
+    "title_source": "quote",
+    "vid": "7pJ0Rjh5V1o",
+    "viewer_score": 0.6072
+   },
+   {
+    "cand": 15,
+    "end": 479.9,
+    "final": 1.919787,
+    "latest": true,
+    "start": 441.11,
+    "title": "Arey Re Hansi 😜😂",
+    "title_source": "quote",
+    "vid": "7pJ0Rjh5V1o",
+    "viewer_score": 0.4673
+   },
+   {
+    "cand": 40,
+    "end": 360.79,
+    "final": 1.210325,
+    "latest": false,
+    "start": 310.894,
+    "title": "Sindoor Sa Kuch Yad Aya 😄",
+    "title_source": "viewer_comment",
+    "vid": "PPWTwGU-cqQ",
+    "viewer_score": 0.1956
+   },
+   {
+    "cand": 27,
+    "end": 531.94,
+    "final": 1.086768,
+    "latest": false,
+    "start": 480.05,
+    "title": "Kuch Bhi Ho Skta Hai Guys 😂",
+    "title_source": "viewer_comment",
+    "vid": "PPWTwGU-cqQ",
+    "viewer_score": 0.2693
+   },
+   {
+    "cand": 29,
+    "end": 690.64,
+    "final": 1.707355,
+    "latest": false,
+    "start": 652.71,
+    "title": "Security Uncle To Much Best 😄",
+    "title_source": "viewer_comment",
+    "vid": "i97piLqeo2I",
+    "viewer_score": 0.888
+   },
+   {
+    "cand": 10,
+    "end": 337.43,
+    "final": 1.649141,
+    "latest": false,
+    "start": 306.11,
+    "title": "Look At Piyushh And Amma 😂",
+    "title_source": "viewer_comment",
+    "vid": "i97piLqeo2I",
+    "viewer_score": 0.1922
+   }
+  ]
+ },
+ "date": "2026-11-24",
+ "max_moments_per_vlog": 20,
+ "used_titles": [
+  "Amma Ki Smile 😄",
+  "Apko Decoration Bhut Pasand Hai 😄",
+  "Avntika Kaa Reaction 😂",
+  "Awantika How Beautiful 😍",
+  "Bulldozer Yogi Baba 😄",
+  "Defender Kab Aayegi 😄",
+  "Donon Hi Fushi Bomb Hai 😂",
+  "Farm House Monsoon Adventure Park 😅",
+  "Good Use Of Brain All Time 😂",
+  "I Hate My Mind 🤯",
+  "Jay Shree Ram 😄",
+  "Jiddi Hai Bhai Bahut Jiddi 🥺😥",
+  "Kunali Aura Minus 9999 😂",
+  "Kunali Kya Kar Raha Hai? 😜😂",
+  "Kya Acting Kar Raha Hai 😂",
+  "Lagta Hai Sabka Life Insurance Hai 😄",
+  "Man Vs Wild 😂",
+  "New Vlog Old Recording Vlog 😄",
+  "Nirmal Bhaiya Finllay Back 😄",
+  "Og Line By Sourav Joshi 😄",
+  "Piyush Ka Hair 😢",
+  "Piyush Ko Mobile Gift Karo 😢",
+  "Pyuish Phone Lene Aaiga Dubara 😂",
+  "Sabse Achi Acting Bed Ne Ki 😅",
+  "Sabse Budhi Generation 😂",
+  "Samne Dekho Kitna Traiphik Ho Raha? 😜😂",
+  "Watch At 0 25x 😄",
+  "Ye Kesi Aavaj He 😂",
+  "Ye Mast Tha 😂",
+  "Ye Tino 1v2 Na Karde 😅😂",
+  "Ye To Katarnak Awaj De Raha Hai 😮"
+ ],
+ "vlog_titles": {
+  "7pJ0Rjh5V1o": "Raatko Chuhaa Pakad Liya 😳 Hath Se",
+  "PPWTwGU-cqQ": "Finally Playing GTA 6 😍 First Time",
+  "i97piLqeo2I": "Defender K Sath Kya Hogya 😲"
+ }
+}
